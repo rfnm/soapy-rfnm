@@ -17,6 +17,10 @@ SoapyRFNM::SoapyRFNM(const SoapySDR::Kwargs& args) {
     else {
         lrfnm = new librfnm(LIBRFNM_TRANSPORT_USB);
     }
+
+    if (!lrfnm->librfnm_s->transport_status.theoretical_mbps) {
+        throw std::runtime_error("Couldn't open the RFNM USB device handle");
+    }
 }
 
 SoapyRFNM::~SoapyRFNM() {
