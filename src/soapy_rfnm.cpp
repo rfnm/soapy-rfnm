@@ -122,7 +122,7 @@ void SoapyRFNM::setBandwidth(const int direction, const size_t channel, const do
 
     volatile rfnm_api_failcode fail;
 
-    lrfnm->librfnm_s->rx.ch[0].iq_lpf_bw = bw / 1e6;
+    lrfnm->librfnm_s->rx.ch[0].rfic_lpf_bw = bw / 1e6;
     fail = lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 
 }
