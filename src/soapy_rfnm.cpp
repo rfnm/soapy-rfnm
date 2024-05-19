@@ -18,7 +18,7 @@ SoapyRFNM::SoapyRFNM(const SoapySDR::Kwargs& args) {
         lrfnm = new librfnm(LIBRFNM_TRANSPORT_USB);
     }
 
-    if (!lrfnm->librfnm_s->transport_status.theoretical_mbps) {
+    if (!lrfnm->s->transport_status.theoretical_mbps) {
         throw std::runtime_error("Couldn't open the RFNM USB device handle");
     }
 }
@@ -97,7 +97,7 @@ void SoapyRFNM::setFrequency(int direction, size_t channel, double frequency, co
 {
     volatile rfnm_api_failcode fail;
 
-    lrfnm->librfnm_s->rx.ch[0].freq = frequency;
+    lrfnm->s->rx.ch[0].freq = frequency;
     fail = lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 
 
@@ -107,7 +107,7 @@ void SoapyRFNM::setGain(const int direction, const size_t channel, const double 
 {
     volatile rfnm_api_failcode fail;
 
-    lrfnm->librfnm_s->rx.ch[0].gain = value;
+    lrfnm->s->rx.ch[0].gain = value;
     fail = lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 }
 
@@ -122,7 +122,7 @@ void SoapyRFNM::setBandwidth(const int direction, const size_t channel, const do
 
     volatile rfnm_api_failcode fail;
 
-    lrfnm->librfnm_s->rx.ch[0].rfic_lpf_bw = bw / 1e6;
+    lrfnm->s->rx.ch[0].rfic_lpf_bw = bw / 1e6;
     fail = lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 
 }
@@ -139,10 +139,10 @@ std::vector<std::string> SoapyRFNM::listAntennas(const int direction, const size
     std::vector<std::string> ants;
     if (direction == SOAPY_SDR_RX) {
         for (int a = 0; a < 10; a++) {
-            if (lrfnm->librfnm_s->rx.ch[0].path_possible[a] == RFNM_PATH_NULL) {
+            if (lrfnm->s->rx.ch[0].path_possible[a] == RFNM_PATH_NULL) {
                 break;
             }
-            ants.push_back(librfnm::rf_path_to_string(lrfnm->librfnm_s->rx.ch[0].path_possible[a]));
+            ants.push_back(librfnm::rf_path_to_string(lrfnm->s->rx.ch[0].path_possible[a]));
         }
     }
     else if (direction == SOAPY_SDR_TX) {
@@ -158,7 +158,7 @@ void SoapyRFNM::setAntenna(const int direction, const size_t channel, const std:
 
     volatile rfnm_api_failcode fail;
 
-    lrfnm->librfnm_s->rx.ch[0].path = librfnm::string_to_rf_path(name);
+    lrfnm->s->rx.ch[0].path = librfnm::string_to_rf_path(name);
     fail = lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 
 
@@ -174,20 +174,20 @@ SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string&
 
     
 
-    lrfnm->librfnm_s->rx.ch[0].enable = RFNM_CH_ON;
-    lrfnm->librfnm_s->rx.ch[0].freq = RFNM_MHZ_TO_HZ(2450);
-    lrfnm->librfnm_s->rx.ch[0].path = lrfnm->librfnm_s->rx.ch[0].path_preferred;
-    lrfnm->librfnm_s->rx.ch[0].samp_freq_div_n = 1;
+    lrfnm->s->rx.ch[0].enable = RFNM_CH_ON;
+    lrfnm->s->rx.ch[0].freq = RFNM_MHZ_TO_HZ(2450);
+    lrfnm->s->rx.ch[0].path = lrfnm->s->rx.ch[0].path_preferred;
+    lrfnm->s->rx.ch[0].samp_freq_div_n = 1;
 
-    //librfnm_s->rx.ch[1].enable = RFNM_CH_ON;
-    //librfnm_s->rx.ch[1].freq = RFNM_MHZ_TO_HZ(2450);
-    //librfnm_s->rx.ch[1].path = librfnm_s->rx.ch[1].path_preferred;
-    //librfnm_s->tx.ch[1].samp_freq_div_n = 2;
+    //s->rx.ch[1].enable = RFNM_CH_ON;
+    //s->rx.ch[1].freq = RFNM_MHZ_TO_HZ(2450);
+    //s->rx.ch[1].path = s->rx.ch[1].path_preferred;
+    //s->tx.ch[1].samp_freq_div_n = 2;
 
-    //librfnm_s->tx.ch[0].enable = RFNM_CH_ON;
-    //librfnm_s->tx.ch[0].freq = RFNM_MHZ_TO_HZ(2450);
-    //librfnm_s->tx.ch[0].path = librfnm_s->tx.ch[0].path_preferred;
-    //librfnm_s->tx.ch[0].samp_freq_div_n = 2;
+    //s->tx.ch[0].enable = RFNM_CH_ON;
+    //s->tx.ch[0].freq = RFNM_MHZ_TO_HZ(2450);
+    //s->tx.ch[0].path = s->tx.ch[0].path_preferred;
+    //s->tx.ch[0].samp_freq_div_n = 2;
 
     volatile rfnm_api_failcode fail;
     fail = lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
@@ -248,7 +248,7 @@ int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const si
     long total_data, data_diff;
     double time_diff, m_readstream_time_diff;
 
-    int bytes_per_ele = lrfnm->librfnm_s->transport_status.rx_stream_format;
+    int bytes_per_ele = lrfnm->s->transport_status.rx_stream_format;
 
     std::chrono::time_point<std::chrono::system_clock> m_readstream_start_time = std::chrono::system_clock::now();
 
