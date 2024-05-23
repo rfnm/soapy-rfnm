@@ -44,7 +44,7 @@ SoapySDR::Kwargs SoapyRFNM::getHardwareInfo() const {
 }
 
 size_t SoapyRFNM::getStreamMTU(SoapySDR::Stream* stream) const {
-    return 101001;
+    return RFNM_USB_RX_PACKET_ELEM_CNT * 16;
 }
 
 size_t SoapyRFNM::getNumChannels(const int direction) const {
@@ -53,7 +53,7 @@ size_t SoapyRFNM::getNumChannels(const int direction) const {
 
 std::vector<double> SoapyRFNM::listSampleRates(const int direction, const size_t channel) const {
     std::vector<double> rates;
-    rates.push_back(122880000);
+    rates.push_back(lrfnm->s->hwinfo.clock.dcs_clk);
     return rates;
 }
 
