@@ -25,6 +25,7 @@ SoapyRFNM::SoapyRFNM(const SoapySDR::Kwargs& args) {
 
 SoapyRFNM::~SoapyRFNM() {
     spdlog::info("RFNMDevice::~RFNMDevice()");
+    delete lrfnm;
 }
 
 
