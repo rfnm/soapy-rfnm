@@ -16,11 +16,17 @@
 
 #define SOAPY_RFNM_BUFCNF LIBRFNM_MIN_RX_BUFCNT
 
+struct rfnm_soapy_partial_buf {
+    uint8_t* buf;
+    uint32_t left;
+    uint32_t offset;
+};
+
 
 class SoapyRFNM : public SoapySDR::Device {
     // ctor (rfnm_construction.cpp)
 public:
-    explicit SoapyRFNM(const SoapySDR::Kwargs &args);
+    explicit SoapyRFNM(const SoapySDR::Kwargs& args);
 
     ~SoapyRFNM() override;
 
@@ -39,11 +45,11 @@ public:
 
     void closeStream(SoapySDR::Stream* stream);
 
-    int activateStream(SoapySDR::Stream *stream, const int flags, const long long timeNs, const size_t numElems) override;
+    int activateStream(SoapySDR::Stream* stream, const int flags, const long long timeNs, const size_t numElems) override;
 
-    int deactivateStream(SoapySDR::Stream *stream, const int flags0, const long long timeNs) override;
+    int deactivateStream(SoapySDR::Stream* stream, const int flags0, const long long timeNs) override;
 
-    int readStream(SoapySDR::Stream *stream,void * const *buffs,const size_t numElems,int &flags,long long &timeNs,const long timeoutUs);
+    int readStream(SoapySDR::Stream* stream, void* const* buffs, const size_t numElems, int& flags, long long& timeNs, const long timeoutUs);
 
     size_t getStreamMTU(SoapySDR::Stream* stream) const;
 
@@ -69,11 +75,13 @@ public:
 
 
 private:
-    librfnm *lrfnm;
+    librfnm* lrfnm;
 
     int outbufsize;
     int inbufsize;
 
     struct librfnm_rx_buf rxbuf[SOAPY_RFNM_BUFCNF];
     struct librfnm_tx_buf txbuf[SOAPY_RFNM_BUFCNF];
+
+    struct rfnm_soapy_partial_buf partial_rx_buf;
 };

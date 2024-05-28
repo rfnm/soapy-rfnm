@@ -21,9 +21,22 @@ SoapyRFNM::SoapyRFNM(const SoapySDR::Kwargs& args) {
     if (!lrfnm->s->transport_status.theoretical_mbps) {
         throw std::runtime_error("Couldn't open the RFNM USB device handle");
     }
+
+    memset(&partial_rx_buf, 0, sizeof(struct rfnm_soapy_partial_buf));
 }
 
 SoapyRFNM::~SoapyRFNM() {
+
+    if (partial_rx_buf.buf) {
+        free(partial_rx_buf.buf);
+    }
+
+    for (int i = 0; i < SOAPY_RFNM_BUFCNF; i++) {
+        if (rxbuf[i].buf) {
+            free(rxbuf[i].buf);
+        }
+    }
+
     spdlog::info("RFNMDevice::~RFNMDevice()");
     delete lrfnm;
 }
@@ -147,8 +160,8 @@ std::vector<std::string> SoapyRFNM::listAntennas(const int direction, const size
         }
     }
     else if (direction == SOAPY_SDR_TX) {
-     //   ants.push_back("TXH");
-    //    ants.push_back("TXW");
+        //   ants.push_back("TXH");
+       //    ants.push_back("TXW");
     }
     return ants;
 }
@@ -173,7 +186,7 @@ void SoapyRFNM::setAntenna(const int direction, const size_t channel, const std:
 SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string& format, const std::vector<size_t>& channels, const SoapySDR::Kwargs& args) {
 
 
-    
+
 
     lrfnm->s->rx.ch[0].enable = RFNM_CH_ON;
     lrfnm->s->rx.ch[0].freq = RFNM_MHZ_TO_HZ(2450);
@@ -192,7 +205,7 @@ SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string&
 
     volatile rfnm_api_failcode fail;
     fail = lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
-    
+
 
     if (!format.compare(SOAPY_SDR_CF32)) {
         //m_outbuf.format = format;
@@ -213,13 +226,14 @@ SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string&
         throw std::runtime_error("setupStream invalid format " + format);
     }
 
-    
+
     //lrfnm->tx_stream(LIBRFNM_STREAM_FORMAT_CS16, &inbufsize);
 
 
     std::queue<struct librfnm_tx_buf*> ltxqueue;
     //std::queue<struct librfnm_rx_buf*> lrxqueue;
 
+    partial_rx_buf.buf = (uint8_t*)malloc(outbufsize);
     for (int i = 0; i < SOAPY_RFNM_BUFCNF; i++) {
         rxbuf[i].buf = (uint8_t*)malloc(outbufsize);
         lrfnm->rx_qbuf(&rxbuf[i]);
@@ -259,33 +273,48 @@ int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const si
 
 keep_waiting:
 
-    
+    if (partial_rx_buf.left) {
+        int can_write_bytes = numElems * bytes_per_ele;
+        if (can_write_bytes > partial_rx_buf.left) {
+            can_write_bytes = partial_rx_buf.left;
+        }
 
-    
+        std::memcpy(((uint8_t*)buffs[0]), partial_rx_buf.buf + partial_rx_buf.offset, can_write_bytes);
+        read_elems += (can_write_bytes / bytes_per_ele);
 
-    while (!lrfnm->rx_dqbuf(&lrxbuf, LIBRFNM_CH0 /* | LIBRFNM_CH1*/, 0)) {
+        partial_rx_buf.left -= can_write_bytes;
+        partial_rx_buf.offset += can_write_bytes;
+    }
 
-        std::memcpy(((uint8_t*)buffs[0]) + (outbufsize * read_elems), lrxbuf->buf, outbufsize);
+    while (read_elems < numElems && !lrfnm->rx_dqbuf(&lrxbuf, LIBRFNM_CH0 /* | LIBRFNM_CH1*/, 0)) {
+        int overflowing_by_elems = 0;
+        int can_copy_bytes = outbufsize;
+
+        if ((read_elems + (outbufsize / bytes_per_ele)) > numElems) {
+
+            overflowing_by_elems = (read_elems + (outbufsize / bytes_per_ele)) - numElems;
+            can_copy_bytes = outbufsize - (overflowing_by_elems * bytes_per_ele);
+        }
+
+        std::memcpy(((uint8_t*)buffs[0]) + (bytes_per_ele * read_elems), lrxbuf->buf, can_copy_bytes);
+
+        if (overflowing_by_elems) {
+            std::memcpy(partial_rx_buf.buf, (lrxbuf->buf + can_copy_bytes), outbufsize - can_copy_bytes);
+            partial_rx_buf.left = outbufsize - can_copy_bytes;
+            partial_rx_buf.offset = 0;
+        }
 
         lrfnm->rx_qbuf(lrxbuf);
-
-        read_elems += (outbufsize / bytes_per_ele);
-
-        if (read_elems >= numElems) {
-            break;
-        }
+        read_elems += (outbufsize / bytes_per_ele) - overflowing_by_elems;
     }
 
 
     if (read_elems < numElems) {
-
         m_readstream_time_diff = std::chrono::duration<double>(std::chrono::system_clock::now() - m_readstream_start_time).count();
         if (m_readstream_time_diff < ((double)timeoutUs) / 1000000.0) {
             goto keep_waiting;
         }
     }
-
-    //spdlog::info("read {} elems", numElems);
     return read_elems;
 }
 
@@ -304,12 +333,12 @@ SoapySDR::Device* rfnm_device_create(const SoapySDR::Kwargs& args)
 
 
 
-SoapySDR::KwargsList rfnm_device_find(const SoapySDR::Kwargs &args) {
-    
+SoapySDR::KwargsList rfnm_device_find(const SoapySDR::Kwargs& args) {
+
     std::vector<struct rfnm_dev_hwinfo> hwlist = librfnm::find(LIBRFNM_TRANSPORT_USB);
     std::vector< SoapySDR::Kwargs> ret;
 
-    for (auto& hw: hwlist)
+    for (auto& hw : hwlist)
     {
         SoapySDR::Kwargs deviceInfo;
 
