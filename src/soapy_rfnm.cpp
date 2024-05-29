@@ -123,10 +123,7 @@ std::vector<std::string> SoapyRFNM::listFrequencies(const int direction, const s
 
 SoapySDR::RangeList SoapyRFNM::getFrequencyRange(const int direction, const size_t channel, const std::string &name) const {
     SoapySDR::RangeList results;
-
-    // assume Lime for now, let's say 30M to 3.8G
-    results.push_back(SoapySDR::Range(30e6, 3.8e9));
-
+    results.push_back(SoapySDR::Range(lrfnm->s->rx.ch[0].freq_min, lrfnm->s->rx.ch[0].freq_max));
     return results;
 }
 
@@ -156,6 +153,7 @@ void SoapyRFNM::setGain(const int direction, const size_t channel, const std::st
 }
 
 SoapySDR::Range SoapyRFNM::getGainRange(const int direction, const size_t channel, const std::string &name) const {
+    //return SoapySDR::Range(lrfnm->s->rx.ch[0].gain_range.min, lrfnm->s->rx.ch[0].gain_range.max);
     return SoapySDR::Range(-100, 100);
 }
 
