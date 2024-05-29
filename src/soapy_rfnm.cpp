@@ -8,7 +8,6 @@
 
 
 SoapyRFNM::SoapyRFNM(const SoapySDR::Kwargs& args) {
-
     spdlog::info("RFNMDevice::RFNMDevice()");
 
     if (args.count("serial") != 0) {
@@ -26,7 +25,6 @@ SoapyRFNM::SoapyRFNM(const SoapySDR::Kwargs& args) {
 }
 
 SoapyRFNM::~SoapyRFNM() {
-
     if (partial_rx_buf.buf) {
         free(partial_rx_buf.buf);
     }
@@ -72,7 +70,6 @@ std::vector<double> SoapyRFNM::listSampleRates(const int direction, const size_t
 }
 
 std::string SoapyRFNM::getNativeStreamFormat(const int direction, const size_t /*channel*/, double& fullScale) const {
-
     fullScale = 32768;
     return SOAPY_SDR_CS16;
 }
@@ -85,16 +82,9 @@ std::vector<std::string> SoapyRFNM::getStreamFormats(const int direction, const 
     return formats;
 }
 
-
-
-
-
-
-
 int SoapyRFNM::activateStream(SoapySDR::Stream* stream, const int flags, const long long timeNs,
-    const size_t numElems) {
+        const size_t numElems) {
     spdlog::info("RFNMDevice::activateStream()");
-
 
     return 0;
 }
@@ -102,10 +92,8 @@ int SoapyRFNM::activateStream(SoapySDR::Stream* stream, const int flags, const l
 int SoapyRFNM::deactivateStream(SoapySDR::Stream* stream, const int flags0, const long long int timeNs) {
     spdlog::info("RFNMDevice::deactivateStream()");
 
-
     return 0;
 }
-
 
 void SoapyRFNM::setFrequency(int direction, size_t channel, double frequency, const SoapySDR::Kwargs& args)
 {
@@ -113,8 +101,6 @@ void SoapyRFNM::setFrequency(int direction, size_t channel, double frequency, co
 
     lrfnm->s->rx.ch[0].freq = frequency;
     fail = lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
-
-
 }
 
 void SoapyRFNM::setGain(const int direction, const size_t channel, const double value)
@@ -138,7 +124,6 @@ void SoapyRFNM::setBandwidth(const int direction, const size_t channel, const do
 
     lrfnm->s->rx.ch[0].rfic_lpf_bw = bw / 1e6;
     fail = lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
-
 }
 
 SoapySDR::RangeList SoapyRFNM::getBandwidthRange(const int direction, const size_t channel) const
@@ -161,7 +146,7 @@ std::vector<std::string> SoapyRFNM::listAntennas(const int direction, const size
     }
     else if (direction == SOAPY_SDR_TX) {
         //   ants.push_back("TXH");
-       //    ants.push_back("TXW");
+        //    ants.push_back("TXW");
     }
     return ants;
 }
@@ -174,20 +159,10 @@ void SoapyRFNM::setAntenna(const int direction, const size_t channel, const std:
 
     lrfnm->s->rx.ch[0].path = librfnm::string_to_rf_path(name);
     fail = lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
-
-
 }
 
-
-
-
-
-
-SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string& format, const std::vector<size_t>& channels, const SoapySDR::Kwargs& args) {
-
-
-
-
+SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string& format,
+        const std::vector<size_t>& channels, const SoapySDR::Kwargs& args) {
     lrfnm->s->rx.ch[0].enable = RFNM_CH_ON;
     lrfnm->s->rx.ch[0].freq = RFNM_MHZ_TO_HZ(2450);
     lrfnm->s->rx.ch[0].path = lrfnm->s->rx.ch[0].path_preferred;
@@ -205,7 +180,6 @@ SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string&
 
     volatile rfnm_api_failcode fail;
     fail = lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
-
 
     if (!format.compare(SOAPY_SDR_CF32)) {
         //m_outbuf.format = format;
@@ -226,9 +200,7 @@ SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string&
         throw std::runtime_error("setupStream invalid format " + format);
     }
 
-
     //lrfnm->tx_stream(LIBRFNM_STREAM_FORMAT_CS16, &inbufsize);
-
 
     std::queue<struct librfnm_tx_buf*> ltxqueue;
     //std::queue<struct librfnm_rx_buf*> lrxqueue;
@@ -245,8 +217,6 @@ SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string&
 
     spdlog::info("outbufsize {} inbufsize {} ", outbufsize, inbufsize);
 
-
-
     return (SoapySDR::Stream*)this;
 }
 
@@ -254,11 +224,8 @@ void SoapyRFNM::closeStream(SoapySDR::Stream* stream) {
     spdlog::info("RFNMDevice::closeStream() -> Closing stream");
 }
 
-
-
-
 int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const size_t numElems, int& flags,
-    long long int& timeNs, const long timeoutUs) {
+        long long int& timeNs, const long timeoutUs) {
 
     long total_data, data_diff;
     double time_diff, m_readstream_time_diff;
@@ -318,20 +285,12 @@ keep_waiting:
     return read_elems;
 }
 
-
-
-
 SoapySDR::Device* rfnm_device_create(const SoapySDR::Kwargs& args)
 {
     spdlog::info("rfnm_device_create()");
 
-
-
     return new SoapyRFNM(args);
 }
-
-
-
 
 SoapySDR::KwargsList rfnm_device_find(const SoapySDR::Kwargs& args) {
 
