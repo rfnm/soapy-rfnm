@@ -69,6 +69,10 @@ std::vector<double> SoapyRFNM::listSampleRates(const int direction, const size_t
     return rates;
 }
 
+double SoapyRFNM::getSampleRate(const int direction, const size_t channel) const {
+    return lrfnm->s->hwinfo.clock.dcs_clk;
+}
+
 std::string SoapyRFNM::getNativeStreamFormat(const int direction, const size_t /*channel*/, double& fullScale) const {
     fullScale = 32768;
     return SOAPY_SDR_CS16;
@@ -95,9 +99,26 @@ int SoapyRFNM::deactivateStream(SoapySDR::Stream* stream, const int flags0, cons
     return 0;
 }
 
+SoapySDR::RangeList SoapyRFNM::getFrequencyRange(const int direction, const size_t channel, const std::string &name) const {
+    SoapySDR::RangeList results;
+
+    // assume Lime for now, let's say 30M to 3.8G
+    results.push_back(SoapySDR::Range(30e6, 3.8e9));
+
+    return results;
+}
+
+double SoapyRFNM::getFrequency(const int direction, const size_t channel, const std::string &name) const {
+    return lrfnm->s->rx.ch[0].freq;
+}
+
 void SoapyRFNM::setFrequency(int direction, size_t channel, double frequency, const SoapySDR::Kwargs& args) {
     lrfnm->s->rx.ch[0].freq = frequency;
     lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
+}
+
+double SoapyRFNM::getGain(const int direction, const size_t channel, const std::string &name) const {
+    return lrfnm->s->rx.ch[0].gain;
 }
 
 void SoapyRFNM::setGain(const int direction, const size_t channel, const double value) {
@@ -107,6 +128,10 @@ void SoapyRFNM::setGain(const int direction, const size_t channel, const double 
 
 SoapySDR::Range SoapyRFNM::getGainRange(const int direction, const size_t channel) const {
     return SoapySDR::Range(-100, 100);
+}
+
+double SoapyRFNM::getBandwidth(const int direction, const size_t channel) const {
+    return lrfnm->s->rx.ch[0].rfic_lpf_bw * 1e6;
 }
 
 void SoapyRFNM::setBandwidth(const int direction, const size_t channel, const double bw) {
@@ -137,6 +162,10 @@ std::vector<std::string> SoapyRFNM::listAntennas(const int direction, const size
         //    ants.push_back("TXW");
     }
     return ants;
+}
+
+std::string SoapyRFNM::getAntenna(const int direction, const size_t channel) const {
+    return librfnm::rf_path_to_string(lrfnm->s->rx.ch[0].path);
 }
 
 void SoapyRFNM::setAntenna(const int direction, const size_t channel, const std::string& name) {
