@@ -24,6 +24,20 @@ SoapyRFNM::SoapyRFNM(const SoapySDR::Kwargs& args) {
     memset(rxbuf, 0, sizeof(rxbuf));
     //memset(txbuf, 0, sizeof(rxbuf));
     memset(&partial_rx_buf, 0, sizeof(struct rfnm_soapy_partial_buf));
+
+    // sane defaults
+    lrfnm->s->rx.ch[0].freq = RFNM_MHZ_TO_HZ(2450);
+    lrfnm->s->rx.ch[0].path = lrfnm->s->rx.ch[0].path_preferred;
+    lrfnm->s->rx.ch[0].samp_freq_div_n = 1;
+
+    //s->rx.ch[1].freq = RFNM_MHZ_TO_HZ(2450);
+    //s->rx.ch[1].path = s->rx.ch[1].path_preferred;
+    //s->tx.ch[1].samp_freq_div_n = 2;
+
+    //s->tx.ch[0].freq = RFNM_MHZ_TO_HZ(2450);
+    //s->tx.ch[0].path = s->tx.ch[0].path_preferred;
+    //s->tx.ch[0].samp_freq_div_n = 2;
+
 }
 
 SoapyRFNM::~SoapyRFNM() {
@@ -191,19 +205,8 @@ void SoapyRFNM::setAntenna(const int direction, const size_t channel, const std:
 SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string& format,
         const std::vector<size_t>& channels, const SoapySDR::Kwargs& args) {
     lrfnm->s->rx.ch[0].enable = RFNM_CH_ON;
-    lrfnm->s->rx.ch[0].freq = RFNM_MHZ_TO_HZ(2450);
-    lrfnm->s->rx.ch[0].path = lrfnm->s->rx.ch[0].path_preferred;
-    lrfnm->s->rx.ch[0].samp_freq_div_n = 1;
-
     //s->rx.ch[1].enable = RFNM_CH_ON;
-    //s->rx.ch[1].freq = RFNM_MHZ_TO_HZ(2450);
-    //s->rx.ch[1].path = s->rx.ch[1].path_preferred;
-    //s->tx.ch[1].samp_freq_div_n = 2;
-
     //s->tx.ch[0].enable = RFNM_CH_ON;
-    //s->tx.ch[0].freq = RFNM_MHZ_TO_HZ(2450);
-    //s->tx.ch[0].path = s->tx.ch[0].path_preferred;
-    //s->tx.ch[0].samp_freq_div_n = 2;
 
     if (lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/)) {
         throw std::runtime_error("setupStream error configuring RFNM");
