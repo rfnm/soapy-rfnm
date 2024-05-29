@@ -97,18 +97,14 @@ int SoapyRFNM::deactivateStream(SoapySDR::Stream* stream, const int flags0, cons
 
 void SoapyRFNM::setFrequency(int direction, size_t channel, double frequency, const SoapySDR::Kwargs& args)
 {
-    volatile rfnm_api_failcode fail;
-
     lrfnm->s->rx.ch[0].freq = frequency;
-    fail = lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
+    lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 }
 
 void SoapyRFNM::setGain(const int direction, const size_t channel, const double value)
 {
-    volatile rfnm_api_failcode fail;
-
     lrfnm->s->rx.ch[0].gain = value;
-    fail = lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
+    lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 }
 
 SoapySDR::Range SoapyRFNM::getGainRange(const int direction, const size_t channel) const
@@ -120,10 +116,8 @@ void SoapyRFNM::setBandwidth(const int direction, const size_t channel, const do
 {
     if (bw == 0.0) return; //special ignore value
 
-    volatile rfnm_api_failcode fail;
-
     lrfnm->s->rx.ch[0].rfic_lpf_bw = bw / 1e6;
-    fail = lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
+    lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 }
 
 SoapySDR::RangeList SoapyRFNM::getBandwidthRange(const int direction, const size_t channel) const
@@ -153,12 +147,8 @@ std::vector<std::string> SoapyRFNM::listAntennas(const int direction, const size
 
 void SoapyRFNM::setAntenna(const int direction, const size_t channel, const std::string& name)
 {
-    name.c_str();
-
-    volatile rfnm_api_failcode fail;
-
     lrfnm->s->rx.ch[0].path = librfnm::string_to_rf_path(name);
-    fail = lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
+    lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 }
 
 SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string& format,
@@ -178,8 +168,9 @@ SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string&
     //s->tx.ch[0].path = s->tx.ch[0].path_preferred;
     //s->tx.ch[0].samp_freq_div_n = 2;
 
-    volatile rfnm_api_failcode fail;
-    fail = lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
+    if (lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/)) {
+        throw std::runtime_error("setupStream error configuring RFNM");
+    }
 
     if (!format.compare(SOAPY_SDR_CF32)) {
         //m_outbuf.format = format;
@@ -226,20 +217,16 @@ void SoapyRFNM::closeStream(SoapySDR::Stream* stream) {
 
 int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const size_t numElems, int& flags,
         long long int& timeNs, const long timeoutUs) {
-
-    long total_data, data_diff;
-    double time_diff, m_readstream_time_diff;
+    double m_readstream_time_diff;
 
     int bytes_per_ele = lrfnm->s->transport_status.rx_stream_format;
 
     std::chrono::time_point<std::chrono::system_clock> m_readstream_start_time = std::chrono::system_clock::now();
 
     struct librfnm_rx_buf* lrxbuf;
-    rfnm_api_failcode err;
     int read_elems = 0;
 
 keep_waiting:
-
     if (partial_rx_buf.left) {
         int can_write_bytes = numElems * bytes_per_ele;
         if (can_write_bytes > partial_rx_buf.left) {
@@ -275,13 +262,13 @@ keep_waiting:
         read_elems += (outbufsize / bytes_per_ele) - overflowing_by_elems;
     }
 
-
     if (read_elems < numElems) {
         m_readstream_time_diff = std::chrono::duration<double>(std::chrono::system_clock::now() - m_readstream_start_time).count();
         if (m_readstream_time_diff < ((double)timeoutUs) / 1000000.0) {
             goto keep_waiting;
         }
     }
+
     return read_elems;
 }
 
