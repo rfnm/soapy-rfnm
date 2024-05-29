@@ -27,6 +27,9 @@ SoapyRFNM::SoapyRFNM(const SoapySDR::Kwargs& args) {
 }
 
 SoapyRFNM::~SoapyRFNM() {
+    spdlog::info("RFNMDevice::~RFNMDevice()");
+    delete lrfnm;
+
     if (partial_rx_buf.buf) {
         free(partial_rx_buf.buf);
     }
@@ -36,9 +39,6 @@ SoapyRFNM::~SoapyRFNM() {
             free(rxbuf[i].buf);
         }
     }
-
-    spdlog::info("RFNMDevice::~RFNMDevice()");
-    delete lrfnm;
 }
 
 
