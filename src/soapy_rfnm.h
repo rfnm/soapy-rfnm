@@ -14,7 +14,7 @@
 #include "librfnm/librfnm.h"
 
 
-#define SOAPY_RFNM_BUFCNF LIBRFNM_MIN_RX_BUFCNT
+#define SOAPY_RFNM_BUFCNT LIBRFNM_MIN_RX_BUFCNT
 
 struct rfnm_soapy_partial_buf {
     uint8_t* buf;
@@ -89,8 +89,8 @@ private:
     int outbufsize;
     int inbufsize;
 
-    struct librfnm_rx_buf rxbuf[SOAPY_RFNM_BUFCNF];
-    struct librfnm_tx_buf txbuf[SOAPY_RFNM_BUFCNF];
+    struct librfnm_rx_buf rxbuf[SOAPY_RFNM_BUFCNT];
+    //struct librfnm_tx_buf txbuf[SOAPY_RFNM_BUFCNT];
 
     struct rfnm_soapy_partial_buf partial_rx_buf;
 };

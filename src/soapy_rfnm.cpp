@@ -21,6 +21,8 @@ SoapyRFNM::SoapyRFNM(const SoapySDR::Kwargs& args) {
         throw std::runtime_error("Couldn't open the RFNM USB device handle");
     }
 
+    memset(rxbuf, 0, sizeof(rxbuf));
+    //memset(txbuf, 0, sizeof(rxbuf));
     memset(&partial_rx_buf, 0, sizeof(struct rfnm_soapy_partial_buf));
 }
 
@@ -29,7 +31,7 @@ SoapyRFNM::~SoapyRFNM() {
         free(partial_rx_buf.buf);
     }
 
-    for (int i = 0; i < SOAPY_RFNM_BUFCNF; i++) {
+    for (int i = 0; i < SOAPY_RFNM_BUFCNT; i++) {
         if (rxbuf[i].buf) {
             free(rxbuf[i].buf);
         }
@@ -219,7 +221,7 @@ SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string&
     //std::queue<struct librfnm_rx_buf*> lrxqueue;
 
     partial_rx_buf.buf = (uint8_t*)malloc(outbufsize);
-    for (int i = 0; i < SOAPY_RFNM_BUFCNF; i++) {
+    for (int i = 0; i < SOAPY_RFNM_BUFCNT; i++) {
         rxbuf[i].buf = (uint8_t*)malloc(outbufsize);
         lrfnm->rx_qbuf(&rxbuf[i]);
         //txbuf[i].buf = rxbuf[i].buf;
