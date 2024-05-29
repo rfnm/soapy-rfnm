@@ -64,14 +64,17 @@ public:
     double getSampleRate(const int direction, const size_t channel) const override;
 
     // Frequency API
+    std::vector<std::string> listFrequencies(const int direction, const size_t channel) const override;
     SoapySDR::RangeList getFrequencyRange(const int direction, const size_t channel, const std::string &name) const override;
     double getFrequency(const int direction, const size_t channel, const std::string &name) const override;
-    void setFrequency(int direction, size_t channel, double frequency, const SoapySDR::Kwargs& args) override;
+    void setFrequency(const int direction, const size_t channel, const std::string &name, const double frequency,
+            const SoapySDR::Kwargs& args) override;
 
     // Gain API
-    SoapySDR::Range getGainRange(const int direction, const size_t channel) const override;
+    std::vector<std::string> listGains(const int direction, const size_t channel) const override;
+    SoapySDR::Range getGainRange(const int direction, const size_t channel, const std::string &name) const override;
     double getGain(const int direction, const size_t channel, const std::string &name) const override;
-    void setGain(const int direction, const size_t channel, const double value) override;
+    void setGain(const int direction, const size_t channel, const std::string &name, const double value) override;
 
     // Bandwidth API
     SoapySDR::RangeList getBandwidthRange(const int direction, const size_t channel) const override;

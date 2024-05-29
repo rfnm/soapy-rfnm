@@ -101,6 +101,12 @@ int SoapyRFNM::deactivateStream(SoapySDR::Stream* stream, const int flags0, cons
     return 0;
 }
 
+std::vector<std::string> SoapyRFNM::listFrequencies(const int direction, const size_t channel) const {
+    std::vector<std::string> names;
+    names.push_back("RF");
+    return names;
+}
+
 SoapySDR::RangeList SoapyRFNM::getFrequencyRange(const int direction, const size_t channel, const std::string &name) const {
     SoapySDR::RangeList results;
 
@@ -114,21 +120,28 @@ double SoapyRFNM::getFrequency(const int direction, const size_t channel, const 
     return lrfnm->s->rx.ch[0].freq;
 }
 
-void SoapyRFNM::setFrequency(int direction, size_t channel, double frequency, const SoapySDR::Kwargs& args) {
+void SoapyRFNM::setFrequency(const int direction, const size_t channel, const std::string &name,
+        const double frequency, const SoapySDR::Kwargs& args) {
     lrfnm->s->rx.ch[0].freq = frequency;
     lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
+}
+
+std::vector<std::string> SoapyRFNM::listGains(const int direction, const size_t channel) const {
+    std::vector<std::string> names;
+    names.push_back("RF");
+    return names;
 }
 
 double SoapyRFNM::getGain(const int direction, const size_t channel, const std::string &name) const {
     return lrfnm->s->rx.ch[0].gain;
 }
 
-void SoapyRFNM::setGain(const int direction, const size_t channel, const double value) {
+void SoapyRFNM::setGain(const int direction, const size_t channel, const std::string &name, const double value) {
     lrfnm->s->rx.ch[0].gain = value;
     lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 }
 
-SoapySDR::Range SoapyRFNM::getGainRange(const int direction, const size_t channel) const {
+SoapySDR::Range SoapyRFNM::getGainRange(const int direction, const size_t channel, const std::string &name) const {
     return SoapySDR::Range(-100, 100);
 }
 
