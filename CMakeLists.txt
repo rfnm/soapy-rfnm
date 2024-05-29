@@ -51,11 +51,11 @@ add_library(soapy-rfnm SHARED)
 
 target_link_libraries(soapy-rfnm PRIVATE librfnm)
 
+target_compile_options(soapy-rfnm PRIVATE -Wall -Wextra -Wno-unused-parameter)
+
 # sources
 target_sources(soapy-rfnm PRIVATE
-  
   "src/soapy_rfnm.cpp"
-  #"src/librfnm.cpp" "src/librfnm.h" "src/librfnm_api.h"
 )
 
 # definitions
