@@ -95,40 +95,34 @@ int SoapyRFNM::deactivateStream(SoapySDR::Stream* stream, const int flags0, cons
     return 0;
 }
 
-void SoapyRFNM::setFrequency(int direction, size_t channel, double frequency, const SoapySDR::Kwargs& args)
-{
+void SoapyRFNM::setFrequency(int direction, size_t channel, double frequency, const SoapySDR::Kwargs& args) {
     lrfnm->s->rx.ch[0].freq = frequency;
     lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 }
 
-void SoapyRFNM::setGain(const int direction, const size_t channel, const double value)
-{
+void SoapyRFNM::setGain(const int direction, const size_t channel, const double value) {
     lrfnm->s->rx.ch[0].gain = value;
     lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 }
 
-SoapySDR::Range SoapyRFNM::getGainRange(const int direction, const size_t channel) const
-{
+SoapySDR::Range SoapyRFNM::getGainRange(const int direction, const size_t channel) const {
     return SoapySDR::Range(-100, 100);
 }
 
-void SoapyRFNM::setBandwidth(const int direction, const size_t channel, const double bw)
-{
+void SoapyRFNM::setBandwidth(const int direction, const size_t channel, const double bw) {
     if (bw == 0.0) return; //special ignore value
 
     lrfnm->s->rx.ch[0].rfic_lpf_bw = bw / 1e6;
     lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 }
 
-SoapySDR::RangeList SoapyRFNM::getBandwidthRange(const int direction, const size_t channel) const
-{
+SoapySDR::RangeList SoapyRFNM::getBandwidthRange(const int direction, const size_t channel) const {
     SoapySDR::RangeList bws;
     bws.push_back(SoapySDR::Range(1e6, 100e6));
     return bws;
 }
 
-std::vector<std::string> SoapyRFNM::listAntennas(const int direction, const size_t channel) const
-{
+std::vector<std::string> SoapyRFNM::listAntennas(const int direction, const size_t channel) const {
     std::vector<std::string> ants;
     if (direction == SOAPY_SDR_RX) {
         for (int a = 0; a < 10; a++) {
@@ -145,8 +139,7 @@ std::vector<std::string> SoapyRFNM::listAntennas(const int direction, const size
     return ants;
 }
 
-void SoapyRFNM::setAntenna(const int direction, const size_t channel, const std::string& name)
-{
+void SoapyRFNM::setAntenna(const int direction, const size_t channel, const std::string& name) {
     lrfnm->s->rx.ch[0].path = librfnm::string_to_rf_path(name);
     lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 }
@@ -272,15 +265,13 @@ keep_waiting:
     return read_elems;
 }
 
-SoapySDR::Device* rfnm_device_create(const SoapySDR::Kwargs& args)
-{
+SoapySDR::Device* rfnm_device_create(const SoapySDR::Kwargs& args) {
     spdlog::info("rfnm_device_create()");
 
     return new SoapyRFNM(args);
 }
 
 SoapySDR::KwargsList rfnm_device_find(const SoapySDR::Kwargs& args) {
-
     std::vector<struct rfnm_dev_hwinfo> hwlist = librfnm::find(LIBRFNM_TRANSPORT_USB);
     std::vector< SoapySDR::Kwargs> ret;
 
