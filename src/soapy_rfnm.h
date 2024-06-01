@@ -87,6 +87,8 @@ public:
     void setAntenna(const int direction, const size_t channel, const std::string& name) override;
 
 private:
+    void setRFNM(uint16_t applies);
+
     librfnm* lrfnm;
 
     int outbufsize;

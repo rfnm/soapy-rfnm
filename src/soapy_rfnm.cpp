@@ -134,7 +134,7 @@ double SoapyRFNM::getFrequency(const int direction, const size_t channel, const 
 void SoapyRFNM::setFrequency(const int direction, const size_t channel, const std::string &name,
         const double frequency, const SoapySDR::Kwargs& args) {
     lrfnm->s->rx.ch[0].freq = frequency;
-    lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
+    setRFNM(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 }
 
 std::vector<std::string> SoapyRFNM::listGains(const int direction, const size_t channel) const {
@@ -149,7 +149,7 @@ double SoapyRFNM::getGain(const int direction, const size_t channel, const std::
 
 void SoapyRFNM::setGain(const int direction, const size_t channel, const std::string &name, const double value) {
     lrfnm->s->rx.ch[0].gain = value;
-    lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
+    setRFNM(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 }
 
 SoapySDR::Range SoapyRFNM::getGainRange(const int direction, const size_t channel, const std::string &name) const {
@@ -165,7 +165,7 @@ void SoapyRFNM::setBandwidth(const int direction, const size_t channel, const do
     if (bw == 0.0) return; //special ignore value
 
     lrfnm->s->rx.ch[0].rfic_lpf_bw = bw / 1e6;
-    lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
+    setRFNM(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 }
 
 SoapySDR::RangeList SoapyRFNM::getBandwidthRange(const int direction, const size_t channel) const {
@@ -197,7 +197,7 @@ std::string SoapyRFNM::getAntenna(const int direction, const size_t channel) con
 
 void SoapyRFNM::setAntenna(const int direction, const size_t channel, const std::string& name) {
     lrfnm->s->rx.ch[0].path = librfnm::string_to_rf_path(name);
-    lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
+    setRFNM(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 }
 
 SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string& format,
@@ -206,9 +206,7 @@ SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string&
     //s->rx.ch[1].enable = RFNM_CH_ON;
     //s->tx.ch[0].enable = RFNM_CH_ON;
 
-    if (lrfnm->set(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/)) {
-        throw std::runtime_error("setupStream error configuring RFNM");
-    }
+    setRFNM(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 
     if (!format.compare(SOAPY_SDR_CF32)) {
         //m_outbuf.format = format;
@@ -308,6 +306,29 @@ keep_waiting:
     }
 
     return read_elems;
+}
+
+void SoapyRFNM::setRFNM(uint16_t applies) {
+    rfnm_api_failcode ret = lrfnm->set(applies);
+    switch (ret) {
+    case RFNM_API_OK:
+        return;
+    case RFNM_API_TUNE_FAIL:
+        spdlog::error("Failure tuning to {} Hz", lrfnm->s->rx.ch[0].freq);
+        throw std::runtime_error("Tuning failure");
+    case RFNM_API_GAIN_FAIL:
+        spdlog::error("Failure setting gain to {} dB", lrfnm->s->rx.ch[0].gain);
+        throw std::runtime_error("Gain setting failure");
+    case RFNM_API_TIMEOUT:
+        spdlog::error("Timeout configuring RFNM");
+        throw std::runtime_error("Timeout configuring RFNM");
+    case RFNM_API_USB_FAIL:
+        spdlog::error("USB failure configuring RFNM");
+        throw std::runtime_error("USB failure configuring RFNM");
+    default:
+        spdlog::error("Error {} configuring RFNM", static_cast<int>(ret));
+        throw std::runtime_error("Error configuring RFNM");
+    }
 }
 
 SoapySDR::Device* rfnm_device_create(const SoapySDR::Kwargs& args) {
