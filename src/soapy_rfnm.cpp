@@ -310,14 +310,19 @@ keep_waiting:
 
 void SoapyRFNM::setRFNM(uint16_t applies) {
     rfnm_api_failcode ret = lrfnm->set(applies);
+
+    // GCC cannot pass references to values in packed structs, so we need stack copies
+    uint64_t freq = lrfnm->s->rx.ch[0].freq;
+    int8_t gain = lrfnm->s->rx.ch[0].gain;
+
     switch (ret) {
     case RFNM_API_OK:
         return;
     case RFNM_API_TUNE_FAIL:
-        spdlog::error("Failure tuning to {} Hz", lrfnm->s->rx.ch[0].freq);
+        spdlog::error("Failure tuning to {} Hz", freq);
         throw std::runtime_error("Tuning failure");
     case RFNM_API_GAIN_FAIL:
-        spdlog::error("Failure setting gain to {} dB", lrfnm->s->rx.ch[0].gain);
+        spdlog::error("Failure setting gain to {} dB", gain);
         throw std::runtime_error("Gain setting failure");
     case RFNM_API_TIMEOUT:
         spdlog::error("Timeout configuring RFNM");
