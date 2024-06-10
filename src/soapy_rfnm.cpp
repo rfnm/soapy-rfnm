@@ -153,8 +153,7 @@ void SoapyRFNM::setGain(const int direction, const size_t channel, const std::st
 }
 
 SoapySDR::Range SoapyRFNM::getGainRange(const int direction, const size_t channel, const std::string &name) const {
-    //return SoapySDR::Range(lrfnm->s->rx.ch[0].gain_range.min, lrfnm->s->rx.ch[0].gain_range.max);
-    return SoapySDR::Range(-100, 100);
+    return SoapySDR::Range(lrfnm->s->rx.ch[0].gain_range.min, lrfnm->s->rx.ch[0].gain_range.max);
 }
 
 double SoapyRFNM::getBandwidth(const int direction, const size_t channel) const {
