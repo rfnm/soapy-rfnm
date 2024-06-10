@@ -62,6 +62,7 @@ public:
     // Sample Rate API
     std::vector<double> listSampleRates(const int direction, const size_t channel) const override;
     double getSampleRate(const int direction, const size_t channel) const override;
+    void setSampleRate(const int direction, const size_t channel, const double rate) override;
 
     // Frequency API
     std::vector<std::string> listFrequencies(const int direction, const size_t channel) const override;

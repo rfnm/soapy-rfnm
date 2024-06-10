@@ -82,11 +82,23 @@ size_t SoapyRFNM::getNumChannels(const int direction) const {
 std::vector<double> SoapyRFNM::listSampleRates(const int direction, const size_t channel) const {
     std::vector<double> rates;
     rates.push_back(lrfnm->s->hwinfo.clock.dcs_clk);
+    rates.push_back(lrfnm->s->hwinfo.clock.dcs_clk / 2);
     return rates;
 }
 
 double SoapyRFNM::getSampleRate(const int direction, const size_t channel) const {
-    return lrfnm->s->hwinfo.clock.dcs_clk;
+    return lrfnm->s->hwinfo.clock.dcs_clk / lrfnm->s->rx.ch[0].samp_freq_div_n;
+}
+
+void SoapyRFNM::setSampleRate(const int direction, const size_t channel, const double rate) {
+    if (rate == lrfnm->s->hwinfo.clock.dcs_clk) {
+        lrfnm->s->rx.ch[0].samp_freq_div_n = 1;
+    } else if (rate == lrfnm->s->hwinfo.clock.dcs_clk / 2) {
+        lrfnm->s->rx.ch[0].samp_freq_div_n = 2;
+    } else {
+        throw std::runtime_error("unsupported sample rate");
+    }
+    setRFNM(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 }
 
 std::string SoapyRFNM::getNativeStreamFormat(const int direction, const size_t /*channel*/, double& fullScale) const {
