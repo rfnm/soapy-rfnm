@@ -265,7 +265,7 @@ void SoapyRFNM::closeStream(SoapySDR::Stream* stream) {
 int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const size_t numElems, int& flags,
         long long int& timeNs, const long timeoutUs) {
     double m_readstream_time_diff;
-
+    uint32_t wait_ms = timeoutUs >= 1000 ? 1 : 0;
     size_t bytes_per_ele = lrfnm->s->transport_status.rx_stream_format;
 
     std::chrono::time_point<std::chrono::system_clock> m_readstream_start_time = std::chrono::system_clock::now();
@@ -287,7 +287,7 @@ keep_waiting:
         partial_rx_buf.offset += can_write_bytes;
     }
 
-    while (read_elems < numElems && !lrfnm->rx_dqbuf(&lrxbuf, LIBRFNM_CH0 /* | LIBRFNM_CH1*/, 0)) {
+    while (read_elems < numElems && !lrfnm->rx_dqbuf(&lrxbuf, LIBRFNM_CH0 /* | LIBRFNM_CH1*/, wait_ms)) {
         size_t overflowing_by_elems = 0;
         size_t can_copy_bytes = outbufsize;
 
