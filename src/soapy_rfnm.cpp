@@ -169,7 +169,7 @@ int SoapyRFNM::activateStream(SoapySDR::Stream* stream, const int flags, const l
     lrfnm->rx_qbuf(lrxbuf);
 
     // Compute initial DC offsets
-    switch (stream_format) {
+    switch (lrfnm->s->transport_status.rx_stream_format) {
     case LIBRFNM_STREAM_FORMAT_CS8:
         measQuadDcOffset(reinterpret_cast<int8_t *>(partial_rx_buf.buf), outbufsize, dc_offsets.i8, 1.0f);
         break;
@@ -183,7 +183,7 @@ int SoapyRFNM::activateStream(SoapySDR::Stream* stream, const int flags, const l
 
     // Apply DC correction on first chunk if requested
     if (dc_correction) {
-        switch (stream_format) {
+        switch (lrfnm->s->transport_status.rx_stream_format) {
         case LIBRFNM_STREAM_FORMAT_CS8:
             applyQuadDcOffset(reinterpret_cast<int8_t *>(partial_rx_buf.buf), outbufsize, dc_offsets.i8);
             break;
@@ -301,19 +301,16 @@ SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string&
         //m_outbuf.format = format;
         //m_outbuf.bytes_per_sample = SoapySDR_formatToSize(SOAPY_SDR_CF32);
         lrfnm->rx_stream(LIBRFNM_STREAM_FORMAT_CF32, &outbufsize);
-        stream_format = LIBRFNM_STREAM_FORMAT_CF32;
     }
     else if (!format.compare(SOAPY_SDR_CS16)) {
         //m_outbuf.format = format;
         //m_outbuf.bytes_per_sample = SoapySDR_formatToSize(SOAPY_SDR_CS16);
         lrfnm->rx_stream(LIBRFNM_STREAM_FORMAT_CS16, &outbufsize);
-        stream_format = LIBRFNM_STREAM_FORMAT_CS16;
     }
     else if (!format.compare(SOAPY_SDR_CS8)) {
         //m_outbuf.format = format;
         //m_outbuf.bytes_per_sample = SoapySDR_formatToSize(SOAPY_SDR_CS8);
         lrfnm->rx_stream(LIBRFNM_STREAM_FORMAT_CS8, &outbufsize);
-        stream_format = LIBRFNM_STREAM_FORMAT_CS8;
     }
     else {
         throw std::runtime_error("setupStream invalid format " + format);
@@ -375,7 +372,7 @@ keep_waiting:
         if (dc_correction) {
             // periodically recalibrate DC offset to account for drift
             if ((lrxbuf->usb_cc & 0xF) == 0) {
-                switch (stream_format) {
+                switch (lrfnm->s->transport_status.rx_stream_format) {
                 case LIBRFNM_STREAM_FORMAT_CS8:
                     measQuadDcOffset(reinterpret_cast<int8_t *>(lrxbuf->buf), outbufsize, dc_offsets.i8, 0.1f);
                     break;
@@ -388,7 +385,7 @@ keep_waiting:
                 }
             }
 
-            switch (stream_format) {
+            switch (lrfnm->s->transport_status.rx_stream_format) {
             case LIBRFNM_STREAM_FORMAT_CS8:
                 applyQuadDcOffset(reinterpret_cast<int8_t *>(lrxbuf->buf), outbufsize, dc_offsets.i8);
                 break;

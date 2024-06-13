@@ -101,7 +101,6 @@ private:
     void setRFNM(uint16_t applies);
 
     bool dc_correction = false;
-    enum librfnm_stream_format stream_format;
     union rfnm_quad_dc_offset dc_offsets = {};
 
     librfnm* lrfnm;
