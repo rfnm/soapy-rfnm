@@ -372,6 +372,21 @@ keep_waiting:
         size_t can_copy_bytes = outbufsize;
 
         if (dc_correction) {
+            // periodically recalibrate DC offset to account for drift
+            if ((lrxbuf->usb_cc & 0xFF) == 0) {
+                switch (stream_format) {
+                case LIBRFNM_STREAM_FORMAT_CS8:
+                    measQuadDcOffset(reinterpret_cast<int8_t *>(lrxbuf->buf), outbufsize, dc_offsets.i8);
+                    break;
+                case LIBRFNM_STREAM_FORMAT_CS16:
+                    measQuadDcOffset(reinterpret_cast<int16_t *>(lrxbuf->buf), outbufsize / 2, dc_offsets.i16);
+                    break;
+                case LIBRFNM_STREAM_FORMAT_CF32:
+                    measQuadDcOffset(reinterpret_cast<float *>(lrxbuf->buf), outbufsize / 4, dc_offsets.f32);
+                    break;
+                }
+            }
+
             switch (stream_format) {
             case LIBRFNM_STREAM_FORMAT_CS8:
                 applyQuadDcOffset(reinterpret_cast<int8_t *>(lrxbuf->buf), outbufsize, dc_offsets.i8);
