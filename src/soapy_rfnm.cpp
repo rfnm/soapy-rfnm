@@ -29,6 +29,8 @@ SoapyRFNM::SoapyRFNM(const SoapySDR::Kwargs& args) {
     lrfnm->s->rx.ch[0].freq = RFNM_MHZ_TO_HZ(2450);
     lrfnm->s->rx.ch[0].path = lrfnm->s->rx.ch[0].path_preferred;
     lrfnm->s->rx.ch[0].samp_freq_div_n = 1;
+    lrfnm->s->rx.ch[0].gain = 0;
+    lrfnm->s->rx.ch[0].rfic_lpf_bw = 80;
 
     //s->rx.ch[1].freq = RFNM_MHZ_TO_HZ(2450);
     //s->rx.ch[1].path = s->rx.ch[1].path_preferred;
