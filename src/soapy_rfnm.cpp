@@ -117,7 +117,7 @@ std::vector<std::string> SoapyRFNM::getStreamFormats(const int direction, const 
 }
 
 template <class T>
-static void measQuadDcOffset(const T *buf, size_t n, T *offsets) {
+static void measQuadDcOffset(const T *buf, size_t n, T *offsets, float filter_coeff) {
     assert((n & 0x7) == 0);
 
     float accum[8] = {};
@@ -131,7 +131,8 @@ static void measQuadDcOffset(const T *buf, size_t n, T *offsets) {
 
     float f = 8.0f / n;
     for (size_t j = 0; j < 8; j++) {
-        offsets[j] = accum[j] * f;
+        accum[j] *= f;
+        offsets[j] = accum[j] * filter_coeff + offsets[j] * (1.0f - filter_coeff);
     }
 }
 
@@ -170,13 +171,13 @@ int SoapyRFNM::activateStream(SoapySDR::Stream* stream, const int flags, const l
     // Compute initial DC offsets
     switch (stream_format) {
     case LIBRFNM_STREAM_FORMAT_CS8:
-        measQuadDcOffset(reinterpret_cast<int8_t *>(partial_rx_buf.buf), outbufsize, dc_offsets.i8);
+        measQuadDcOffset(reinterpret_cast<int8_t *>(partial_rx_buf.buf), outbufsize, dc_offsets.i8, 1.0f);
         break;
     case LIBRFNM_STREAM_FORMAT_CS16:
-        measQuadDcOffset(reinterpret_cast<int16_t *>(partial_rx_buf.buf), outbufsize / 2, dc_offsets.i16);
+        measQuadDcOffset(reinterpret_cast<int16_t *>(partial_rx_buf.buf), outbufsize / 2, dc_offsets.i16, 1.0f);
         break;
     case LIBRFNM_STREAM_FORMAT_CF32:
-        measQuadDcOffset(reinterpret_cast<float *>(partial_rx_buf.buf), outbufsize / 4, dc_offsets.f32);
+        measQuadDcOffset(reinterpret_cast<float *>(partial_rx_buf.buf), outbufsize / 4, dc_offsets.f32, 1.0f);
         break;
     }
 
@@ -373,16 +374,16 @@ keep_waiting:
 
         if (dc_correction) {
             // periodically recalibrate DC offset to account for drift
-            if ((lrxbuf->usb_cc & 0xFF) == 0) {
+            if ((lrxbuf->usb_cc & 0xF) == 0) {
                 switch (stream_format) {
                 case LIBRFNM_STREAM_FORMAT_CS8:
-                    measQuadDcOffset(reinterpret_cast<int8_t *>(lrxbuf->buf), outbufsize, dc_offsets.i8);
+                    measQuadDcOffset(reinterpret_cast<int8_t *>(lrxbuf->buf), outbufsize, dc_offsets.i8, 0.1f);
                     break;
                 case LIBRFNM_STREAM_FORMAT_CS16:
-                    measQuadDcOffset(reinterpret_cast<int16_t *>(lrxbuf->buf), outbufsize / 2, dc_offsets.i16);
+                    measQuadDcOffset(reinterpret_cast<int16_t *>(lrxbuf->buf), outbufsize / 2, dc_offsets.i16, 0.1f);
                     break;
                 case LIBRFNM_STREAM_FORMAT_CF32:
-                    measQuadDcOffset(reinterpret_cast<float *>(lrxbuf->buf), outbufsize / 4, dc_offsets.f32);
+                    measQuadDcOffset(reinterpret_cast<float *>(lrxbuf->buf), outbufsize / 4, dc_offsets.f32, 0.1f);
                     break;
                 }
             }
