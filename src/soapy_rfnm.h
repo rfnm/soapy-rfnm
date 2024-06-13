@@ -22,6 +22,11 @@ struct rfnm_soapy_partial_buf {
     uint32_t offset;
 };
 
+union rfnm_quad_dc_offset {
+    int8_t i8[8];
+    int16_t i16[8];
+    float f32[8];
+};
 
 class SoapyRFNM : public SoapySDR::Device {
 public:
@@ -87,8 +92,16 @@ public:
     std::string getAntenna(const int direction, const size_t channel) const override;
     void setAntenna(const int direction, const size_t channel, const std::string& name) override;
 
+    // DC Offset API
+    bool hasDCOffsetMode(const int direction, const size_t channel) const override;
+    void setDCOffsetMode(const int dir, const size_t channel, const bool automatic) override;
+    bool getDCOffsetMode(const int dir, const size_t channel) const override;
+
 private:
     void setRFNM(uint16_t applies);
+
+    bool dc_correction = false;
+    union rfnm_quad_dc_offset dc_offsets = {};
 
     librfnm* lrfnm;
 

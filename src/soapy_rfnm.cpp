@@ -116,9 +116,85 @@ std::vector<std::string> SoapyRFNM::getStreamFormats(const int direction, const 
     return formats;
 }
 
+template <class T>
+static void measQuadDcOffset(const T *buf, size_t n, T *offsets, float filter_coeff) {
+    assert((n & 0x7) == 0);
+
+    float accum[8] = {};
+
+    for (size_t i = 0; i < n; i += 8) {
+        #pragma GCC unroll 8
+        for (size_t j = 0; j < 8; j++) {
+            accum[j] += buf[i+j];
+        }
+    }
+
+    float f = 8.0f / n;
+    for (size_t j = 0; j < 8; j++) {
+        accum[j] *= f;
+        offsets[j] = accum[j] * filter_coeff + offsets[j] * (1.0f - filter_coeff);
+    }
+}
+
+template <class T>
+static void applyQuadDcOffset(T *buf, size_t n, const T *offsets) {
+    assert((n & 0x7) == 0);
+
+    for (size_t i = 0; i < n; i += 8) {
+        #pragma GCC unroll 8
+        for (size_t j = 0; j < 8; j++) {
+            buf[i+j] -= offsets[j];
+        }
+    }
+}
+
 int SoapyRFNM::activateStream(SoapySDR::Stream* stream, const int flags, const long long timeNs,
         const size_t numElems) {
     spdlog::info("RFNMDevice::activateStream()");
+
+    if (!partial_rx_buf.buf) {
+        throw std::runtime_error("stream not set up");
+    }
+
+    // First sample can sometimes take a while to come, so fetch it here before normal streaming
+    // This first chunk is also useful for initial calibration
+    struct librfnm_rx_buf* lrxbuf;
+    if (lrfnm->rx_dqbuf(&lrxbuf, LIBRFNM_CH0, 250)) {
+        throw std::runtime_error("timeout activating stream");
+    }
+
+    std::memcpy(partial_rx_buf.buf, lrxbuf->buf, outbufsize);
+    partial_rx_buf.left = outbufsize;
+    partial_rx_buf.offset = 0;
+    lrfnm->rx_qbuf(lrxbuf);
+
+    // Compute initial DC offsets
+    switch (lrfnm->s->transport_status.rx_stream_format) {
+    case LIBRFNM_STREAM_FORMAT_CS8:
+        measQuadDcOffset(reinterpret_cast<int8_t *>(partial_rx_buf.buf), outbufsize, dc_offsets.i8, 1.0f);
+        break;
+    case LIBRFNM_STREAM_FORMAT_CS16:
+        measQuadDcOffset(reinterpret_cast<int16_t *>(partial_rx_buf.buf), outbufsize / 2, dc_offsets.i16, 1.0f);
+        break;
+    case LIBRFNM_STREAM_FORMAT_CF32:
+        measQuadDcOffset(reinterpret_cast<float *>(partial_rx_buf.buf), outbufsize / 4, dc_offsets.f32, 1.0f);
+        break;
+    }
+
+    // Apply DC correction on first chunk if requested
+    if (dc_correction) {
+        switch (lrfnm->s->transport_status.rx_stream_format) {
+        case LIBRFNM_STREAM_FORMAT_CS8:
+            applyQuadDcOffset(reinterpret_cast<int8_t *>(partial_rx_buf.buf), outbufsize, dc_offsets.i8);
+            break;
+        case LIBRFNM_STREAM_FORMAT_CS16:
+            applyQuadDcOffset(reinterpret_cast<int16_t *>(partial_rx_buf.buf), outbufsize / 2, dc_offsets.i16);
+            break;
+        case LIBRFNM_STREAM_FORMAT_CF32:
+            applyQuadDcOffset(reinterpret_cast<float *>(partial_rx_buf.buf), outbufsize / 4, dc_offsets.f32);
+            break;
+        }
+    }
 
     return 0;
 }
@@ -293,6 +369,35 @@ keep_waiting:
         size_t overflowing_by_elems = 0;
         size_t can_copy_bytes = outbufsize;
 
+        if (dc_correction) {
+            // periodically recalibrate DC offset to account for drift
+            if ((lrxbuf->usb_cc & 0xF) == 0) {
+                switch (lrfnm->s->transport_status.rx_stream_format) {
+                case LIBRFNM_STREAM_FORMAT_CS8:
+                    measQuadDcOffset(reinterpret_cast<int8_t *>(lrxbuf->buf), outbufsize, dc_offsets.i8, 0.1f);
+                    break;
+                case LIBRFNM_STREAM_FORMAT_CS16:
+                    measQuadDcOffset(reinterpret_cast<int16_t *>(lrxbuf->buf), outbufsize / 2, dc_offsets.i16, 0.1f);
+                    break;
+                case LIBRFNM_STREAM_FORMAT_CF32:
+                    measQuadDcOffset(reinterpret_cast<float *>(lrxbuf->buf), outbufsize / 4, dc_offsets.f32, 0.1f);
+                    break;
+                }
+            }
+
+            switch (lrfnm->s->transport_status.rx_stream_format) {
+            case LIBRFNM_STREAM_FORMAT_CS8:
+                applyQuadDcOffset(reinterpret_cast<int8_t *>(lrxbuf->buf), outbufsize, dc_offsets.i8);
+                break;
+            case LIBRFNM_STREAM_FORMAT_CS16:
+                applyQuadDcOffset(reinterpret_cast<int16_t *>(lrxbuf->buf), outbufsize / 2, dc_offsets.i16);
+                break;
+            case LIBRFNM_STREAM_FORMAT_CF32:
+                applyQuadDcOffset(reinterpret_cast<float *>(lrxbuf->buf), outbufsize / 4, dc_offsets.f32);
+                break;
+            }
+        }
+
         if ((read_elems + (outbufsize / bytes_per_ele)) > numElems) {
 
             overflowing_by_elems = (read_elems + (outbufsize / bytes_per_ele)) - numElems;
@@ -319,6 +424,18 @@ keep_waiting:
     }
 
     return read_elems;
+}
+
+bool SoapyRFNM::hasDCOffsetMode(const int direction, const size_t channel) const {
+    return true;
+}
+
+void SoapyRFNM::setDCOffsetMode(const int dir, const size_t channel, const bool automatic) {
+    dc_correction = automatic;
+}
+
+bool SoapyRFNM::getDCOffsetMode(const int dir, const size_t channel) const {
+    return dc_correction;
 }
 
 void SoapyRFNM::setRFNM(uint16_t applies) {
