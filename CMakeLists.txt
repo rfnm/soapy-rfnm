@@ -49,7 +49,7 @@ include(cmake/cpm-soapysdr.cmake)
 
 add_library(soapy-rfnm SHARED)
 
-target_link_libraries(soapy-rfnm PRIVATE librfnm)
+target_link_libraries(soapy-rfnm PRIVATE rfnm)
 
 target_compile_options(soapy-rfnm PRIVATE -Wall -Wextra -Wno-unused-parameter)
 
@@ -71,7 +71,7 @@ target_compile_features(soapy-rfnm PUBLIC cxx_std_23)
 target_link_libraries(soapy-rfnm PRIVATE SoapySDR)
 #target_link_libraries(soapy-rfnm PRIVATE fmt::fmt)
 target_link_libraries(soapy-rfnm PRIVATE spdlog)
-target_link_libraries(soapy-rfnm PRIVATE librfnm)
+target_link_libraries(soapy-rfnm PRIVATE rfnm)
 
 #target_include_directories(soapy-rfnm PUBLIC "../librfnm/librfnm.h")
 
