@@ -3,7 +3,7 @@
 #
 
 cmake_minimum_required(VERSION 3.22)
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake/Modules")
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 #
 # Project
@@ -13,14 +13,6 @@ project(soapy-rfnm
   LANGUAGES CXX
   VERSION 0.0.1
 )
-INCLUDE(FindPkgConfig)
-
-# Install to PyBOMBS target prefix if defined
-if(DEFINED ENV{PYBOMBS_PREFIX})
-    set(CMAKE_INSTALL_PREFIX $ENV{PYBOMBS_PREFIX})
-    set(PYBOMBS_PREFIX $ENV{PYBOMBS_PREFIX})
-    message(STATUS "PyBOMBS installed GNU Radio. Setting CMAKE_INSTALL_PREFIX to $ENV{PYBOMBS_PREFIX}")
-endif()
 
 #select the release build type by default to get optimization flags
 if(NOT DEFINED CMAKE_BUILD_TYPE)
@@ -49,19 +41,15 @@ include(cmake/cpm.cmake)
 include(cmake/cpm-librfnm.cmake)
 #include(cmake/cpm-fmtlib.cmake)
 include(cmake/cpm-spdlog.cmake)
-find_package(SoapySDR)
-if(NOT DEFINED SoapySDR)
-  include(cmake/cpm-soapysdr.cmake)
-  set(SOAPYSDR_LIBRARIES SoapySDR)
-else()
-  include_directories(${SOAPYSDR_INCLUDE_DIRS})
-endif()
+include(cmake/cpm-soapysdr.cmake)
 
 #
 # Library
 #
 
 add_library(soapy-rfnm SHARED)
+
+target_link_libraries(soapy-rfnm PRIVATE rfnm)
 
 target_compile_options(soapy-rfnm PRIVATE -Wall -Wextra -Wno-unused-parameter)
 
@@ -80,13 +68,10 @@ target_compile_features(soapy-rfnm PUBLIC cxx_std_23)
 
 # libraries
 #target_link_libraries(soapy-rfnm PRIVATE LIBUSB::LIBUSB)
+target_link_libraries(soapy-rfnm PRIVATE SoapySDR)
 #target_link_libraries(soapy-rfnm PRIVATE fmt::fmt)
-
-target_link_libraries(soapy-rfnm PRIVATE 
-  ${SOAPYSDR_LIBRARIES}
-  spdlog
-  rfnm
-)
+target_link_libraries(soapy-rfnm PRIVATE spdlog)
+target_link_libraries(soapy-rfnm PRIVATE rfnm)
 
 #target_include_directories(soapy-rfnm PUBLIC "../librfnm/librfnm.h")
 
