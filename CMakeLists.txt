@@ -53,11 +53,21 @@ endif()
 
 #include(cmake/cpm-fmtlib.cmake)
 include(cmake/cpm-spdlog.cmake)
+if(spdlog_ADDED)
+    include_directories("${spdlog_SOURCE_DIR}/include")
+endif()
+
+if(MSVC)
+    include_directories("${CMAKE_SOURCE_DIR}/3rdparty/libusb/include")
+endif()
+
 find_package(SoapySDR)
-if(NOT DEFINED $(SOAPYSDR_INCLUDE_DIRS))
+if(NOT SOAPYSDR_FOUND)
+  message("Building SoapySDR")
   include(cmake/cpm-soapysdr.cmake)
   set(SOAPYSDR_LIBRARIES SoapySDR)
 else()
+  message("Found installed SoapySDR")
   include_directories(${SOAPYSDR_INCLUDE_DIRS})
 endif()
 
