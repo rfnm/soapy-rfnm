@@ -47,6 +47,10 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 include(cmake/cpm.cmake)
 include(cmake/cpm-librfnm.cmake)
+if (librfnm_ADDED)
+  include_directories("${librfnm_SOURCE_DIR}/include")
+endif()
+
 #include(cmake/cpm-fmtlib.cmake)
 include(cmake/cpm-spdlog.cmake)
 find_package(SoapySDR)
@@ -85,7 +89,7 @@ target_compile_features(soapy-rfnm PUBLIC cxx_std_23)
 target_link_libraries(soapy-rfnm PRIVATE 
   ${SOAPYSDR_LIBRARIES}
   spdlog
-  rfnm
+  librfnm_static
 )
 
 #target_include_directories(soapy-rfnm PUBLIC "../librfnm/librfnm.h")
