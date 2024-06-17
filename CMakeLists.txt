@@ -94,7 +94,7 @@ target_compile_features(soapy-rfnm PUBLIC cxx_std_23)
 target_link_libraries(soapy-rfnm PRIVATE 
  ${SOAPYSDR_LIBRARIES}
  spdlog 
- rfnm
+ librfnm
 )
 
 
