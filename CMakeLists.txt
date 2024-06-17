@@ -57,6 +57,10 @@ if(spdlog_ADDED)
     include_directories("${spdlog_SOURCE_DIR}/include")
 endif()
 
+if(MSVC)
+    include_directories("${CMAKE_SOURCE_DIR}/3rdparty/libusb/include")
+endif()
+
 find_package(SoapySDR)
 if(NOT SOAPYSDR_FOUND)
   message("Building SoapySDR")
