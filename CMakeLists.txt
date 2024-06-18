@@ -33,10 +33,6 @@ endif()
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 
-
-
-
-
 #
 # Dependencies
 #
@@ -54,7 +50,6 @@ endif()
 
 #include(cmake/cpm-fmtlib.cmake)
 include(cmake/cpm-spdlog.cmake)
-include(cmake/cpm-soapysdr.cmake)
 
 find_package(SoapySDR)
 if(NOT SOAPYSDR_FOUND)
@@ -93,9 +88,9 @@ target_compile_features(soapy-rfnm PUBLIC cxx_std_23)
 #target_link_libraries(soapy-rfnm PRIVATE LIBUSB::LIBUSB)
 #target_link_libraries(soapy-rfnm PRIVATE fmt::fmt)
 
-target_link_libraries(soapy-rfnm PRIVATE 
+target_link_libraries(soapy-rfnm PRIVATE
  ${SOAPYSDR_LIBRARIES}
- spdlog 
+ spdlog
  librfnm
 )
 

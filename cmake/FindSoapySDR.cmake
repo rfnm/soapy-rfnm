@@ -2,7 +2,9 @@ message(STATUS "FINDING SOAPY.")
 if(NOT SOAPYSDR_FOUND)
   pkg_check_modules (SOAPYSDR_PKG SoapySDR)
 
-  find_path(SOAPYSDR_INCLUDE_DIRS 
+  string(SUBSTRING ${SOAPYSDR_PKG_VERSION} 0 3 SOAPY_SDR_ABI_VERSION)
+
+  find_path(SOAPYSDR_INCLUDE_DIRS
     NAMES SoapySDR/Device.h
     HINTS $ENV{SOAPY_DIR}/include ${PYBOMBS_PREFIX}/include
     PATHS ${SOAPYSDR_PKG_INCLUDE_DIRS}
@@ -10,13 +12,13 @@ if(NOT SOAPYSDR_FOUND)
           /usr/local/include
   )
 
-  find_library(SOAPYSDR_LIBRARIES 
+  find_library(SOAPYSDR_LIBRARIES
     NAMES SoapySDR
     HINTS $ENV{SOAPY_DIR}/lib ${PYBOMBS_PREFIX}/lib
     PATHS ${SOAPYSDR_PKG_LIBRARY_DIRS}
           /usr/lib
           /usr/local/lib
-          /usr/lib/arm-linux-gnueabihf     
+          /usr/lib/arm-linux-gnueabihf
   )
 
 
