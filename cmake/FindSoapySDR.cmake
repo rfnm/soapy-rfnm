@@ -2,6 +2,8 @@ message(STATUS "FINDING SOAPY.")
 if(NOT SOAPYSDR_FOUND)
   pkg_check_modules (SOAPYSDR_PKG SoapySDR)
 
+  string(SUBSTRING ${SOAPYSDR_PKG_VERSION} 0 3 SOAPY_SDR_ABI_VERSION)
+
   find_path(SOAPYSDR_INCLUDE_DIRS
     NAMES SoapySDR/Device.h
     HINTS $ENV{SOAPY_DIR}/include ${PYBOMBS_PREFIX}/include
