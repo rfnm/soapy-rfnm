@@ -50,6 +50,7 @@ endif()
 
 #include(cmake/cpm-fmtlib.cmake)
 include(cmake/cpm-spdlog.cmake)
+include_directories("${spdlog_SOURCE_DIR}/include")
 
 find_package(SoapySDR)
 if(NOT SOAPYSDR_FOUND)
