@@ -66,6 +66,7 @@ endif()
 #
 
 add_library(soapy-rfnm SHARED)
+
 if(NOT MSVC)
     target_compile_options(soapy-rfnm PRIVATE -Wall -Wextra -Wno-unused-parameter)
 endif()
