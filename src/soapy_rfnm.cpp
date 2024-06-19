@@ -6,6 +6,20 @@
 #include "soapy_rfnm.h"
 #include <librfnm/librfnm.h>
 
+static uint16_t librfnm_rx_chan_flags[MAX_RX_CHAN_COUNT] = {
+    LIBRFNM_CH0,
+    LIBRFNM_CH1,
+    LIBRFNM_CH2,
+    LIBRFNM_CH3,
+};
+
+static uint16_t librfnm_rx_chan_apply[MAX_RX_CHAN_COUNT] = {
+    LIBRFNM_APPLY_CH0_RX,
+    LIBRFNM_APPLY_CH1_RX,
+    LIBRFNM_APPLY_CH2_RX,
+    LIBRFNM_APPLY_CH3_RX
+};
+
 SoapyRFNM::SoapyRFNM(const SoapySDR::Kwargs& args) {
     spdlog::info("RFNMDevice::RFNMDevice()");
 
@@ -30,13 +44,17 @@ SoapyRFNM::SoapyRFNM(const SoapySDR::Kwargs& args) {
     }
 
     // sane defaults
+    uint16_t apply_mask = 0;
     for (size_t i = 0; i < rx_chan_count; i++) {
+        lrfnm->s->rx.ch[i].enable = RFNM_CH_OFF;
         lrfnm->s->rx.ch[i].freq = RFNM_MHZ_TO_HZ(2450);
         lrfnm->s->rx.ch[i].path = lrfnm->s->rx.ch[0].path_preferred;
         lrfnm->s->rx.ch[i].samp_freq_div_n = 1;
         lrfnm->s->rx.ch[i].gain = 0;
         lrfnm->s->rx.ch[i].rfic_lpf_bw = 80;
+        apply_mask |= librfnm_rx_chan_apply[i];
     }
+    setRFNM(apply_mask);
 
     //s->tx.ch[0].freq = RFNM_MHZ_TO_HZ(2450);
     //s->tx.ch[0].path = s->tx.ch[0].path_preferred;
@@ -75,20 +93,6 @@ SoapySDR::Kwargs SoapyRFNM::getHardwareInfo() const {
 size_t SoapyRFNM::getStreamMTU(SoapySDR::Stream* stream) const {
     return RFNM_USB_RX_PACKET_ELEM_CNT * 16;
 }
-
-static uint16_t librfnm_rx_chan_flags[MAX_RX_CHAN_COUNT] = {
-    LIBRFNM_CH0,
-    LIBRFNM_CH1,
-    LIBRFNM_CH2,
-    LIBRFNM_CH3,
-};
-
-static uint16_t librfnm_rx_chan_apply[MAX_RX_CHAN_COUNT] = {
-    LIBRFNM_APPLY_CH0_RX,
-    LIBRFNM_APPLY_CH1_RX,
-    LIBRFNM_APPLY_CH2_RX,
-    LIBRFNM_APPLY_CH3_RX
-};
 
 size_t SoapyRFNM::getNumChannels(const int direction) const {
     switch (direction) {
