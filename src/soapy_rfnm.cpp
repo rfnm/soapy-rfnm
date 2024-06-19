@@ -472,6 +472,9 @@ SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string&
         }
     }
 
+    // flush old junk before streaming new data
+    lrfnm->rx_flush(20);
+
     uint16_t apply_mask = 0;
     for (size_t channel : channels) {
         lrfnm->s->rx.ch[channel].enable = RFNM_CH_ON;
@@ -501,12 +504,7 @@ void SoapyRFNM::closeStream(SoapySDR::Stream* stream) {
     setRFNM(apply_mask);
 
     // flush buffers
-    for (size_t i = 0; i < rx_chan_count; i++) {
-        struct librfnm_rx_buf* lrxbuf;
-        while (!lrfnm->rx_dqbuf(&lrxbuf, librfnm_rx_chan_flags[i], 0)) {
-            lrfnm->rx_qbuf(lrxbuf);
-        }
-    }
+    lrfnm->rx_flush(0);
 
     stream_setup = false;
 }
