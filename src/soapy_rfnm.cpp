@@ -437,35 +437,47 @@ SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string&
         }
     }
 
+    enum librfnm_stream_format stream_format;
+    bool alloc_buffers = true;
+
     if (!format.compare(SOAPY_SDR_CF32)) {
-        lrfnm->rx_stream(LIBRFNM_STREAM_FORMAT_CF32, &outbufsize);
+        stream_format = LIBRFNM_STREAM_FORMAT_CF32;
     } else if (!format.compare(SOAPY_SDR_CS16)) {
-        lrfnm->rx_stream(LIBRFNM_STREAM_FORMAT_CS16, &outbufsize);
+        stream_format = LIBRFNM_STREAM_FORMAT_CS16;
     } else if (!format.compare(SOAPY_SDR_CS8)) {
-        lrfnm->rx_stream(LIBRFNM_STREAM_FORMAT_CS8, &outbufsize);
+        stream_format = LIBRFNM_STREAM_FORMAT_CS8;
     } else {
         throw std::runtime_error("setupStream invalid format " + format);
+    }
+
+    if (lrfnm->s->transport_status.rx_stream_format) {
+        if (stream_format != lrfnm->s->transport_status.rx_stream_format) {
+            throw std::runtime_error("changing stream format is unsupported");
+        }
+        alloc_buffers = false;
+    }
+
+    lrfnm->rx_stream(stream_format, &outbufsize);
+
+    if (alloc_buffers) {
+        for (int i = 0; i < SOAPY_RFNM_BUFCNT; i++) {
+            rxbuf[i].buf = (uint8_t*)malloc(outbufsize);
+            lrfnm->rx_qbuf(&rxbuf[i]);
+            //txbuf[i].buf = rxbuf[i].buf;
+            //txbuf[i].buf = (uint8_t*)malloc(inbufsize);
+        }
+
+        for (size_t channel = 0; channel < rx_chan_count; channel++) {
+            partial_rx_buf[channel].buf = (uint8_t*)malloc(outbufsize);
+        }
     }
 
     uint16_t apply_mask = 0;
     for (size_t channel : channels) {
         lrfnm->s->rx.ch[channel].enable = RFNM_CH_ON;
         apply_mask |= librfnm_rx_chan_apply[channel];
-        partial_rx_buf[channel].buf = (uint8_t*)malloc(outbufsize);
     }
     setRFNM(apply_mask);
-
-    //std::queue<struct librfnm_tx_buf*> ltxqueue;
-    //std::queue<struct librfnm_rx_buf*> lrxqueue;
-
-    for (int i = 0; i < SOAPY_RFNM_BUFCNT; i++) {
-        rxbuf[i].buf = (uint8_t*)malloc(outbufsize);
-        lrfnm->rx_qbuf(&rxbuf[i]);
-        //txbuf[i].buf = rxbuf[i].buf;
-        //txbuf[i].buf = (uint8_t*)malloc(inbufsize);
-
-        //ltxqueue.push(&txbuf[i]);
-    }
 
     stream_setup = true;
 
@@ -474,6 +486,29 @@ SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string&
 
 void SoapyRFNM::closeStream(SoapySDR::Stream* stream) {
     spdlog::info("RFNMDevice::closeStream() -> Closing stream");
+
+    // stop the receiver threads
+    lrfnm->rx_stream_stop();
+
+    // stop the ADCs
+    uint16_t apply_mask = 0;
+    for (size_t i = 0; i < rx_chan_count; i++) {
+        if (lrfnm->s->rx.ch[i].enable != RFNM_CH_OFF) {
+            lrfnm->s->rx.ch[i].enable = RFNM_CH_OFF;
+            apply_mask |= librfnm_rx_chan_apply[i];
+        }
+    }
+    setRFNM(apply_mask);
+
+    // flush buffers
+    for (size_t i = 0; i < rx_chan_count; i++) {
+        struct librfnm_rx_buf* lrxbuf;
+        while (!lrfnm->rx_dqbuf(&lrxbuf, librfnm_rx_chan_flags[i], 0)) {
+            lrfnm->rx_qbuf(lrxbuf);
+        }
+    }
+
+    stream_setup = false;
 }
 
 int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const size_t numElems, int& flags,
