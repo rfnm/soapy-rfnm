@@ -15,6 +15,7 @@
 
 
 #define SOAPY_RFNM_BUFCNT LIBRFNM_MIN_RX_BUFCNT
+#define MAX_RX_CHAN_COUNT 4
 
 struct rfnm_soapy_partial_buf {
     uint8_t* buf;
@@ -94,22 +95,24 @@ public:
 
     // DC Offset API
     bool hasDCOffsetMode(const int direction, const size_t channel) const override;
-    void setDCOffsetMode(const int dir, const size_t channel, const bool automatic) override;
-    bool getDCOffsetMode(const int dir, const size_t channel) const override;
+    void setDCOffsetMode(const int direction, const size_t channel, const bool automatic) override;
+    bool getDCOffsetMode(const int direction, const size_t channel) const override;
 
 private:
     void setRFNM(uint16_t applies);
 
-    bool dc_correction = false;
-    union rfnm_quad_dc_offset dc_offsets = {};
+    size_t rx_chan_count = 0;
+    bool dc_correction[MAX_RX_CHAN_COUNT] = {false};
+    union rfnm_quad_dc_offset dc_offsets[MAX_RX_CHAN_COUNT] = {};
 
     librfnm* lrfnm;
 
-    int outbufsize;
-    int inbufsize;
+    bool stream_setup = false;
+    int outbufsize = 0;
+    //int inbufsize = 0;
 
-    struct librfnm_rx_buf rxbuf[SOAPY_RFNM_BUFCNT];
+    struct librfnm_rx_buf rxbuf[SOAPY_RFNM_BUFCNT] = {};
     //struct librfnm_tx_buf txbuf[SOAPY_RFNM_BUFCNT];
 
-    struct rfnm_soapy_partial_buf partial_rx_buf;
+    struct rfnm_soapy_partial_buf partial_rx_buf[MAX_RX_CHAN_COUNT] = {};
 };

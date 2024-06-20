@@ -6,6 +6,19 @@
 #include "soapy_rfnm.h"
 #include <librfnm/librfnm.h>
 
+static uint16_t librfnm_rx_chan_flags[MAX_RX_CHAN_COUNT] = {
+    LIBRFNM_CH0,
+    LIBRFNM_CH1,
+    LIBRFNM_CH2,
+    LIBRFNM_CH3,
+};
+
+static uint16_t librfnm_rx_chan_apply[MAX_RX_CHAN_COUNT] = {
+    LIBRFNM_APPLY_CH0_RX,
+    LIBRFNM_APPLY_CH1_RX,
+    LIBRFNM_APPLY_CH2_RX,
+    LIBRFNM_APPLY_CH3_RX
+};
 
 SoapyRFNM::SoapyRFNM(const SoapySDR::Kwargs& args) {
     spdlog::info("RFNMDevice::RFNMDevice()");
@@ -21,20 +34,28 @@ SoapyRFNM::SoapyRFNM(const SoapySDR::Kwargs& args) {
         throw std::runtime_error("Couldn't open the RFNM USB device handle");
     }
 
-    memset(rxbuf, 0, sizeof(rxbuf));
-    //memset(txbuf, 0, sizeof(rxbuf));
-    memset(&partial_rx_buf, 0, sizeof(struct rfnm_soapy_partial_buf));
+    rx_chan_count = lrfnm->s->hwinfo.daughterboard[0].rx_ch_cnt +
+                    lrfnm->s->hwinfo.daughterboard[1].rx_ch_cnt;
+
+    if (rx_chan_count > MAX_RX_CHAN_COUNT) {
+        // Should never happen
+        spdlog::error("Invalid channel count reported by hardware");
+        rx_chan_count = MAX_RX_CHAN_COUNT;
+    }
 
     // sane defaults
-    lrfnm->s->rx.ch[0].freq = RFNM_MHZ_TO_HZ(2450);
-    lrfnm->s->rx.ch[0].path = lrfnm->s->rx.ch[0].path_preferred;
-    lrfnm->s->rx.ch[0].samp_freq_div_n = 1;
-    lrfnm->s->rx.ch[0].gain = 0;
-    lrfnm->s->rx.ch[0].rfic_lpf_bw = 80;
-
-    //s->rx.ch[1].freq = RFNM_MHZ_TO_HZ(2450);
-    //s->rx.ch[1].path = s->rx.ch[1].path_preferred;
-    //s->tx.ch[1].samp_freq_div_n = 2;
+    uint16_t apply_mask = 0;
+    for (size_t i = 0; i < rx_chan_count; i++) {
+        lrfnm->s->rx.ch[i].enable = RFNM_CH_OFF;
+        lrfnm->s->rx.ch[i].stream = RFNM_CH_STREAM_AUTO;
+        lrfnm->s->rx.ch[i].freq = RFNM_MHZ_TO_HZ(2450);
+        lrfnm->s->rx.ch[i].path = lrfnm->s->rx.ch[0].path_preferred;
+        lrfnm->s->rx.ch[i].samp_freq_div_n = 1;
+        lrfnm->s->rx.ch[i].gain = 0;
+        lrfnm->s->rx.ch[i].rfic_lpf_bw = 80;
+        apply_mask |= librfnm_rx_chan_apply[i];
+    }
+    setRFNM(apply_mask);
 
     //s->tx.ch[0].freq = RFNM_MHZ_TO_HZ(2450);
     //s->tx.ch[0].path = s->tx.ch[0].path_preferred;
@@ -46,17 +67,14 @@ SoapyRFNM::~SoapyRFNM() {
     spdlog::info("RFNMDevice::~RFNMDevice()");
     delete lrfnm;
 
-    if (partial_rx_buf.buf) {
-        free(partial_rx_buf.buf);
+    for (size_t i = 0; i < rx_chan_count; i++) {
+        free(partial_rx_buf[i].buf);
     }
 
     for (int i = 0; i < SOAPY_RFNM_BUFCNT; i++) {
-        if (rxbuf[i].buf) {
-            free(rxbuf[i].buf);
-        }
+        free(rxbuf[i].buf);
     }
 }
-
 
 std::string SoapyRFNM::getDriverKey() const {
     spdlog::info("RFNMDevice::getDriverKey()");
@@ -78,29 +96,54 @@ size_t SoapyRFNM::getStreamMTU(SoapySDR::Stream* stream) const {
 }
 
 size_t SoapyRFNM::getNumChannels(const int direction) const {
-    return direction;
+    switch (direction) {
+    case SOAPY_SDR_TX:
+        return 0; // not yet implemented
+    case SOAPY_SDR_RX:
+        return rx_chan_count;
+    default:
+        return 0;
+    }
 }
 
 std::vector<double> SoapyRFNM::listSampleRates(const int direction, const size_t channel) const {
     std::vector<double> rates;
-    rates.push_back(lrfnm->s->hwinfo.clock.dcs_clk);
-    rates.push_back(lrfnm->s->hwinfo.clock.dcs_clk / 2);
+
+    if (direction == SOAPY_SDR_RX) {
+        rates.push_back(lrfnm->s->hwinfo.clock.dcs_clk);
+        rates.push_back(lrfnm->s->hwinfo.clock.dcs_clk / 2);
+    }
+
     return rates;
 }
 
 double SoapyRFNM::getSampleRate(const int direction, const size_t channel) const {
-    return lrfnm->s->hwinfo.clock.dcs_clk / lrfnm->s->rx.ch[0].samp_freq_div_n;
+    if (direction == SOAPY_SDR_RX) {
+        if (channel >= rx_chan_count) {
+            throw std::runtime_error("nonexistent channel");
+        }
+
+        return lrfnm->s->hwinfo.clock.dcs_clk / lrfnm->s->rx.ch[channel].samp_freq_div_n;
+    } else {
+        return 0;
+    }
 }
 
 void SoapyRFNM::setSampleRate(const int direction, const size_t channel, const double rate) {
-    if (rate == lrfnm->s->hwinfo.clock.dcs_clk) {
-        lrfnm->s->rx.ch[0].samp_freq_div_n = 1;
-    } else if (rate == lrfnm->s->hwinfo.clock.dcs_clk / 2) {
-        lrfnm->s->rx.ch[0].samp_freq_div_n = 2;
-    } else {
-        throw std::runtime_error("unsupported sample rate");
+    if (direction == SOAPY_SDR_RX) {
+        if (channel >= rx_chan_count) {
+            throw std::runtime_error("nonexistent channel");
+        }
+
+        if (rate == lrfnm->s->hwinfo.clock.dcs_clk) {
+            lrfnm->s->rx.ch[channel].samp_freq_div_n = 1;
+        } else if (rate == lrfnm->s->hwinfo.clock.dcs_clk / 2) {
+            lrfnm->s->rx.ch[channel].samp_freq_div_n = 2;
+        } else {
+            throw std::runtime_error("unsupported sample rate");
+        }
+        setRFNM(librfnm_rx_chan_apply[channel]);
     }
-    setRFNM(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
 }
 
 std::string SoapyRFNM::getNativeStreamFormat(const int direction, const size_t /*channel*/, double& fullScale) const {
@@ -152,47 +195,55 @@ int SoapyRFNM::activateStream(SoapySDR::Stream* stream, const int flags, const l
         const size_t numElems) {
     spdlog::info("RFNMDevice::activateStream()");
 
-    if (!partial_rx_buf.buf) {
-        throw std::runtime_error("stream not set up");
-    }
+    for (size_t channel = 0; channel < MAX_RX_CHAN_COUNT; channel++) {
+        if (lrfnm->s->rx.ch[channel].enable != RFNM_CH_ON) {
+            continue;
+        }
 
-    // First sample can sometimes take a while to come, so fetch it here before normal streaming
-    // This first chunk is also useful for initial calibration
-    struct librfnm_rx_buf* lrxbuf;
-    if (lrfnm->rx_dqbuf(&lrxbuf, LIBRFNM_CH0, 250)) {
-        throw std::runtime_error("timeout activating stream");
-    }
+        // First sample can sometimes take a while to come, so fetch it here before normal streaming
+        // This first chunk is also useful for initial calibration
+        struct librfnm_rx_buf* lrxbuf;
+        if (lrfnm->rx_dqbuf(&lrxbuf, librfnm_rx_chan_flags[channel], 250)) {
+            throw std::runtime_error("timeout activating stream");
+        }
 
-    std::memcpy(partial_rx_buf.buf, lrxbuf->buf, outbufsize);
-    partial_rx_buf.left = outbufsize;
-    partial_rx_buf.offset = 0;
-    lrfnm->rx_qbuf(lrxbuf);
+        std::memcpy(partial_rx_buf[channel].buf, lrxbuf->buf, outbufsize);
+        partial_rx_buf[channel].left = outbufsize;
+        partial_rx_buf[channel].offset = 0;
+        lrfnm->rx_qbuf(lrxbuf);
 
-    // Compute initial DC offsets
-    switch (lrfnm->s->transport_status.rx_stream_format) {
-    case LIBRFNM_STREAM_FORMAT_CS8:
-        measQuadDcOffset(reinterpret_cast<int8_t *>(partial_rx_buf.buf), outbufsize, dc_offsets.i8, 1.0f);
-        break;
-    case LIBRFNM_STREAM_FORMAT_CS16:
-        measQuadDcOffset(reinterpret_cast<int16_t *>(partial_rx_buf.buf), outbufsize / 2, dc_offsets.i16, 1.0f);
-        break;
-    case LIBRFNM_STREAM_FORMAT_CF32:
-        measQuadDcOffset(reinterpret_cast<float *>(partial_rx_buf.buf), outbufsize / 4, dc_offsets.f32, 1.0f);
-        break;
-    }
-
-    // Apply DC correction on first chunk if requested
-    if (dc_correction) {
+        // Compute initial DC offsets
         switch (lrfnm->s->transport_status.rx_stream_format) {
         case LIBRFNM_STREAM_FORMAT_CS8:
-            applyQuadDcOffset(reinterpret_cast<int8_t *>(partial_rx_buf.buf), outbufsize, dc_offsets.i8);
+            measQuadDcOffset(reinterpret_cast<int8_t *>(partial_rx_buf[channel].buf),
+                    outbufsize, dc_offsets[channel].i8, 1.0f);
             break;
         case LIBRFNM_STREAM_FORMAT_CS16:
-            applyQuadDcOffset(reinterpret_cast<int16_t *>(partial_rx_buf.buf), outbufsize / 2, dc_offsets.i16);
+            measQuadDcOffset(reinterpret_cast<int16_t *>(partial_rx_buf[channel].buf),
+                    outbufsize / 2, dc_offsets[channel].i16, 1.0f);
             break;
         case LIBRFNM_STREAM_FORMAT_CF32:
-            applyQuadDcOffset(reinterpret_cast<float *>(partial_rx_buf.buf), outbufsize / 4, dc_offsets.f32);
+            measQuadDcOffset(reinterpret_cast<float *>(partial_rx_buf[channel].buf),
+                    outbufsize / 4, dc_offsets[channel].f32, 1.0f);
             break;
+        }
+
+        // Apply DC correction on first chunk if requested
+        if (dc_correction[channel]) {
+            switch (lrfnm->s->transport_status.rx_stream_format) {
+            case LIBRFNM_STREAM_FORMAT_CS8:
+                applyQuadDcOffset(reinterpret_cast<int8_t *>(partial_rx_buf[channel].buf),
+                        outbufsize, dc_offsets[channel].i8);
+                break;
+            case LIBRFNM_STREAM_FORMAT_CS16:
+                applyQuadDcOffset(reinterpret_cast<int16_t *>(partial_rx_buf[channel].buf),
+                        outbufsize / 2, dc_offsets[channel].i16);
+                break;
+            case LIBRFNM_STREAM_FORMAT_CF32:
+                applyQuadDcOffset(reinterpret_cast<float *>(partial_rx_buf[channel].buf),
+                        outbufsize / 4, dc_offsets[channel].f32);
+                break;
+            }
         }
     }
 
@@ -213,18 +264,42 @@ std::vector<std::string> SoapyRFNM::listFrequencies(const int direction, const s
 
 SoapySDR::RangeList SoapyRFNM::getFrequencyRange(const int direction, const size_t channel, const std::string &name) const {
     SoapySDR::RangeList results;
-    results.push_back(SoapySDR::Range(lrfnm->s->rx.ch[0].freq_min, lrfnm->s->rx.ch[0].freq_max));
+
+    if (direction == SOAPY_SDR_RX) {
+        if (channel >= rx_chan_count) {
+            throw std::runtime_error("nonexistent channel");
+        }
+
+        results.push_back(SoapySDR::Range(
+                    lrfnm->s->rx.ch[channel].freq_min,
+                    lrfnm->s->rx.ch[channel].freq_max));
+    }
+
     return results;
 }
 
 double SoapyRFNM::getFrequency(const int direction, const size_t channel, const std::string &name) const {
-    return lrfnm->s->rx.ch[0].freq;
+    if (direction == SOAPY_SDR_RX) {
+        if (channel >= rx_chan_count) {
+            throw std::runtime_error("nonexistent channel");
+        }
+
+        return lrfnm->s->rx.ch[channel].freq;
+    } else {
+        return 0;
+    }
 }
 
 void SoapyRFNM::setFrequency(const int direction, const size_t channel, const std::string &name,
         const double frequency, const SoapySDR::Kwargs& args) {
-    lrfnm->s->rx.ch[0].freq = frequency;
-    setRFNM(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
+    if (direction == SOAPY_SDR_RX) {
+        if (channel >= rx_chan_count) {
+            throw std::runtime_error("nonexistent channel");
+        }
+
+        lrfnm->s->rx.ch[channel].freq = frequency;
+        setRFNM(librfnm_rx_chan_apply[channel]);
+    }
 }
 
 std::vector<std::string> SoapyRFNM::listGains(const int direction, const size_t channel) const {
@@ -234,27 +309,65 @@ std::vector<std::string> SoapyRFNM::listGains(const int direction, const size_t 
 }
 
 double SoapyRFNM::getGain(const int direction, const size_t channel, const std::string &name) const {
-    return lrfnm->s->rx.ch[0].gain;
+    if (direction == SOAPY_SDR_RX) {
+        if (channel >= rx_chan_count) {
+            throw std::runtime_error("nonexistent channel");
+        }
+
+        return lrfnm->s->rx.ch[channel].gain;
+    } else {
+        return 0;
+    }
 }
 
 void SoapyRFNM::setGain(const int direction, const size_t channel, const std::string &name, const double value) {
-    lrfnm->s->rx.ch[0].gain = value;
-    setRFNM(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
+    if (direction == SOAPY_SDR_RX) {
+        if (channel >= rx_chan_count) {
+            throw std::runtime_error("nonexistent channel");
+        }
+
+        lrfnm->s->rx.ch[channel].gain = value;
+        setRFNM(librfnm_rx_chan_apply[channel]);
+    }
 }
 
 SoapySDR::Range SoapyRFNM::getGainRange(const int direction, const size_t channel, const std::string &name) const {
-    return SoapySDR::Range(lrfnm->s->rx.ch[0].gain_range.min, lrfnm->s->rx.ch[0].gain_range.max);
+    if (direction == SOAPY_SDR_RX) {
+        if (channel >= rx_chan_count) {
+            throw std::runtime_error("nonexistent channel");
+        }
+
+        return SoapySDR::Range(
+                lrfnm->s->rx.ch[channel].gain_range.min,
+                lrfnm->s->rx.ch[channel].gain_range.max);
+    } else {
+        return SoapySDR::Range(0, 0);
+    }
 }
 
 double SoapyRFNM::getBandwidth(const int direction, const size_t channel) const {
-    return lrfnm->s->rx.ch[0].rfic_lpf_bw * 1e6;
+    if (direction == SOAPY_SDR_RX) {
+        if (channel >= rx_chan_count) {
+            throw std::runtime_error("nonexistent channel");
+        }
+
+        return lrfnm->s->rx.ch[channel].rfic_lpf_bw * 1e6;
+    } else {
+        return 0;
+    }
 }
 
 void SoapyRFNM::setBandwidth(const int direction, const size_t channel, const double bw) {
-    if (bw == 0.0) return; //special ignore value
+    if (direction == SOAPY_SDR_RX) {
+        if (channel >= rx_chan_count) {
+            throw std::runtime_error("nonexistent channel");
+        }
 
-    lrfnm->s->rx.ch[0].rfic_lpf_bw = bw / 1e6;
-    setRFNM(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
+        if (bw == 0.0) return; // special ignore value
+
+        lrfnm->s->rx.ch[channel].rfic_lpf_bw = bw / 1e6;
+        setRFNM(librfnm_rx_chan_apply[channel]);
+    }
 }
 
 SoapySDR::RangeList SoapyRFNM::getBandwidthRange(const int direction, const size_t channel) const {
@@ -266,11 +379,15 @@ SoapySDR::RangeList SoapyRFNM::getBandwidthRange(const int direction, const size
 std::vector<std::string> SoapyRFNM::listAntennas(const int direction, const size_t channel) const {
     std::vector<std::string> ants;
     if (direction == SOAPY_SDR_RX) {
+        if (channel >= rx_chan_count) {
+            throw std::runtime_error("nonexistent channel");
+        }
+
         for (int a = 0; a < 10; a++) {
-            if (lrfnm->s->rx.ch[0].path_possible[a] == RFNM_PATH_NULL) {
+            if (lrfnm->s->rx.ch[channel].path_possible[a] == RFNM_PATH_NULL) {
                 break;
             }
-            ants.push_back(librfnm::rf_path_to_string(lrfnm->s->rx.ch[0].path_possible[a]));
+            ants.push_back(librfnm::rf_path_to_string(lrfnm->s->rx.ch[channel].path_possible[a]));
         }
     }
     else if (direction == SOAPY_SDR_TX) {
@@ -281,146 +398,214 @@ std::vector<std::string> SoapyRFNM::listAntennas(const int direction, const size
 }
 
 std::string SoapyRFNM::getAntenna(const int direction, const size_t channel) const {
-    return librfnm::rf_path_to_string(lrfnm->s->rx.ch[0].path);
+    if (direction == SOAPY_SDR_RX) {
+        if (channel >= rx_chan_count) {
+            throw std::runtime_error("nonexistent channel");
+        }
+
+        return librfnm::rf_path_to_string(lrfnm->s->rx.ch[channel].path);
+    } else {
+        return "";
+    }
 }
 
 void SoapyRFNM::setAntenna(const int direction, const size_t channel, const std::string& name) {
-    lrfnm->s->rx.ch[0].path = librfnm::string_to_rf_path(name);
-    setRFNM(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
+    if (direction == SOAPY_SDR_RX) {
+        if (channel >= rx_chan_count) {
+            throw std::runtime_error("nonexistent channel");
+        }
+
+        lrfnm->s->rx.ch[channel].path = librfnm::string_to_rf_path(name);
+        setRFNM(librfnm_rx_chan_apply[channel]);
+    }
 }
 
 SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string& format,
         const std::vector<size_t>& channels, const SoapySDR::Kwargs& args) {
-    lrfnm->s->rx.ch[0].enable = RFNM_CH_ON;
-    //s->rx.ch[1].enable = RFNM_CH_ON;
-    //s->tx.ch[0].enable = RFNM_CH_ON;
+    if (direction != SOAPY_SDR_RX) {
+        return nullptr;
+    }
 
-    setRFNM(LIBRFNM_APPLY_CH0_RX /*| LIBRFNM_APPLY_CH0_TX  | LIBRFNM_APPLY_CH1_RX*/);
+    if (stream_setup) {
+        throw std::runtime_error("multiple streams unsupported");
+    }
+
+    // bounds check channels before we start the stream
+    for (size_t channel : channels) {
+        if (channel >= rx_chan_count) {
+            throw std::runtime_error("nonexistent channel");
+        }
+    }
+
+    enum librfnm_stream_format stream_format;
+    bool alloc_buffers = true;
 
     if (!format.compare(SOAPY_SDR_CF32)) {
-        //m_outbuf.format = format;
-        //m_outbuf.bytes_per_sample = SoapySDR_formatToSize(SOAPY_SDR_CF32);
-        lrfnm->rx_stream(LIBRFNM_STREAM_FORMAT_CF32, &outbufsize);
-    }
-    else if (!format.compare(SOAPY_SDR_CS16)) {
-        //m_outbuf.format = format;
-        //m_outbuf.bytes_per_sample = SoapySDR_formatToSize(SOAPY_SDR_CS16);
-        lrfnm->rx_stream(LIBRFNM_STREAM_FORMAT_CS16, &outbufsize);
-    }
-    else if (!format.compare(SOAPY_SDR_CS8)) {
-        //m_outbuf.format = format;
-        //m_outbuf.bytes_per_sample = SoapySDR_formatToSize(SOAPY_SDR_CS8);
-        lrfnm->rx_stream(LIBRFNM_STREAM_FORMAT_CS8, &outbufsize);
-    }
-    else {
+        stream_format = LIBRFNM_STREAM_FORMAT_CF32;
+    } else if (!format.compare(SOAPY_SDR_CS16)) {
+        stream_format = LIBRFNM_STREAM_FORMAT_CS16;
+    } else if (!format.compare(SOAPY_SDR_CS8)) {
+        stream_format = LIBRFNM_STREAM_FORMAT_CS8;
+    } else {
         throw std::runtime_error("setupStream invalid format " + format);
     }
 
-    //lrfnm->tx_stream(LIBRFNM_STREAM_FORMAT_CS16, &inbufsize);
-
-    std::queue<struct librfnm_tx_buf*> ltxqueue;
-    //std::queue<struct librfnm_rx_buf*> lrxqueue;
-
-    partial_rx_buf.buf = (uint8_t*)malloc(outbufsize);
-    for (int i = 0; i < SOAPY_RFNM_BUFCNT; i++) {
-        rxbuf[i].buf = (uint8_t*)malloc(outbufsize);
-        lrfnm->rx_qbuf(&rxbuf[i]);
-        //txbuf[i].buf = rxbuf[i].buf;
-        //txbuf[i].buf = (uint8_t*)malloc(inbufsize);
-
-        //ltxqueue.push(&txbuf[i]);
+    if (lrfnm->s->transport_status.rx_stream_format) {
+        if (stream_format != lrfnm->s->transport_status.rx_stream_format) {
+            throw std::runtime_error("changing stream format is unsupported");
+        }
+        alloc_buffers = false;
     }
 
-    spdlog::info("outbufsize {} inbufsize {} ", outbufsize, inbufsize);
+    lrfnm->rx_stream(stream_format, &outbufsize);
+
+    if (alloc_buffers) {
+        for (int i = 0; i < SOAPY_RFNM_BUFCNT; i++) {
+            rxbuf[i].buf = (uint8_t*)malloc(outbufsize);
+            lrfnm->rx_qbuf(&rxbuf[i]);
+            //txbuf[i].buf = rxbuf[i].buf;
+            //txbuf[i].buf = (uint8_t*)malloc(inbufsize);
+        }
+
+        for (size_t channel = 0; channel < rx_chan_count; channel++) {
+            partial_rx_buf[channel].buf = (uint8_t*)malloc(outbufsize);
+        }
+    }
+
+    // flush old junk before streaming new data
+    lrfnm->rx_flush(20);
+
+    uint16_t apply_mask = 0;
+    for (size_t channel : channels) {
+        lrfnm->s->rx.ch[channel].enable = RFNM_CH_ON;
+        apply_mask |= librfnm_rx_chan_apply[channel];
+    }
+    setRFNM(apply_mask);
+
+    stream_setup = true;
 
     return (SoapySDR::Stream*)this;
 }
 
 void SoapyRFNM::closeStream(SoapySDR::Stream* stream) {
     spdlog::info("RFNMDevice::closeStream() -> Closing stream");
+
+    // stop the receiver threads
+    lrfnm->rx_stream_stop();
+
+    // stop the ADCs
+    uint16_t apply_mask = 0;
+    for (size_t i = 0; i < rx_chan_count; i++) {
+        if (lrfnm->s->rx.ch[i].enable != RFNM_CH_OFF) {
+            lrfnm->s->rx.ch[i].enable = RFNM_CH_OFF;
+            apply_mask |= librfnm_rx_chan_apply[i];
+        }
+    }
+    setRFNM(apply_mask);
+
+    // flush buffers
+    lrfnm->rx_flush(0);
+
+    stream_setup = false;
 }
 
 int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const size_t numElems, int& flags,
         long long int& timeNs, const long timeoutUs) {
-    double m_readstream_time_diff;
-    uint32_t wait_ms = timeoutUs >= 1000 ? 1 : 0;
+    auto timeout = std::chrono::system_clock::now() + std::chrono::microseconds(timeoutUs);
     size_t bytes_per_ele = lrfnm->s->transport_status.rx_stream_format;
-
-    std::chrono::time_point<std::chrono::system_clock> m_readstream_start_time = std::chrono::system_clock::now();
-
     struct librfnm_rx_buf* lrxbuf;
     size_t read_elems = 0;
+    size_t buf_idx = 0;
 
-keep_waiting:
-    if (partial_rx_buf.left) {
-        size_t can_write_bytes = numElems * bytes_per_ele;
-        if (can_write_bytes > partial_rx_buf.left) {
-            can_write_bytes = partial_rx_buf.left;
+    // TODO: keep usb_cc of each channel in sync
+
+    for (size_t channel = 0; channel < MAX_RX_CHAN_COUNT; channel++) {
+        if (lrfnm->s->rx.ch[channel].enable != RFNM_CH_ON) {
+            continue;
         }
 
-        std::memcpy(((uint8_t*)buffs[0]), partial_rx_buf.buf + partial_rx_buf.offset, can_write_bytes);
-        read_elems += (can_write_bytes / bytes_per_ele);
+        read_elems = 0;
 
-        partial_rx_buf.left -= can_write_bytes;
-        partial_rx_buf.offset += can_write_bytes;
-    }
+        if (partial_rx_buf[channel].left) {
+            size_t can_write_bytes = numElems * bytes_per_ele;
+            if (can_write_bytes > partial_rx_buf[channel].left) {
+                can_write_bytes = partial_rx_buf[channel].left;
+            }
 
-    while (read_elems < numElems && !lrfnm->rx_dqbuf(&lrxbuf, LIBRFNM_CH0 /* | LIBRFNM_CH1*/, wait_ms)) {
-        size_t overflowing_by_elems = 0;
-        size_t can_copy_bytes = outbufsize;
+            std::memcpy(((uint8_t*)buffs[buf_idx]), partial_rx_buf[channel].buf + partial_rx_buf[channel].offset, can_write_bytes);
+            read_elems += (can_write_bytes / bytes_per_ele);
 
-        if (dc_correction) {
-            // periodically recalibrate DC offset to account for drift
-            if ((lrxbuf->usb_cc & 0xF) == 0) {
+            partial_rx_buf[channel].left -= can_write_bytes;
+            partial_rx_buf[channel].offset += can_write_bytes;
+        }
+
+        while (read_elems < numElems) {
+            uint32_t wait_ms = 0;
+            size_t overflowing_by_elems = 0;
+            size_t can_copy_bytes = outbufsize;
+
+            if (timeoutUs > 0) {
+                auto time_remaining = timeout - std::chrono::system_clock::now();
+                if (time_remaining > std::chrono::duration<int64_t>::zero()) {
+                    wait_ms = std::chrono::duration_cast<std::chrono::milliseconds>(time_remaining).count();
+                }
+            }
+
+            if (lrfnm->rx_dqbuf(&lrxbuf, librfnm_rx_chan_flags[channel], wait_ms)) {
+                if (timeoutUs >= 10000) {
+                    spdlog::info("read timeout, got {} of {} within {} us", read_elems, numElems, timeoutUs);
+                }
+                break;
+            }
+
+            if (dc_correction[channel]) {
+                // periodically recalibrate DC offset to account for drift
+                if ((lrxbuf->usb_cc & 0xF) == 0) {
+                    switch (lrfnm->s->transport_status.rx_stream_format) {
+                    case LIBRFNM_STREAM_FORMAT_CS8:
+                        measQuadDcOffset(reinterpret_cast<int8_t *>(lrxbuf->buf), outbufsize, dc_offsets[channel].i8, 0.1f);
+                        break;
+                    case LIBRFNM_STREAM_FORMAT_CS16:
+                        measQuadDcOffset(reinterpret_cast<int16_t *>(lrxbuf->buf), outbufsize / 2, dc_offsets[channel].i16, 0.1f);
+                        break;
+                    case LIBRFNM_STREAM_FORMAT_CF32:
+                        measQuadDcOffset(reinterpret_cast<float *>(lrxbuf->buf), outbufsize / 4, dc_offsets[channel].f32, 0.1f);
+                        break;
+                    }
+                }
+
                 switch (lrfnm->s->transport_status.rx_stream_format) {
                 case LIBRFNM_STREAM_FORMAT_CS8:
-                    measQuadDcOffset(reinterpret_cast<int8_t *>(lrxbuf->buf), outbufsize, dc_offsets.i8, 0.1f);
+                    applyQuadDcOffset(reinterpret_cast<int8_t *>(lrxbuf->buf), outbufsize, dc_offsets[channel].i8);
                     break;
                 case LIBRFNM_STREAM_FORMAT_CS16:
-                    measQuadDcOffset(reinterpret_cast<int16_t *>(lrxbuf->buf), outbufsize / 2, dc_offsets.i16, 0.1f);
+                    applyQuadDcOffset(reinterpret_cast<int16_t *>(lrxbuf->buf), outbufsize / 2, dc_offsets[channel].i16);
                     break;
                 case LIBRFNM_STREAM_FORMAT_CF32:
-                    measQuadDcOffset(reinterpret_cast<float *>(lrxbuf->buf), outbufsize / 4, dc_offsets.f32, 0.1f);
+                    applyQuadDcOffset(reinterpret_cast<float *>(lrxbuf->buf), outbufsize / 4, dc_offsets[channel].f32);
                     break;
                 }
             }
 
-            switch (lrfnm->s->transport_status.rx_stream_format) {
-            case LIBRFNM_STREAM_FORMAT_CS8:
-                applyQuadDcOffset(reinterpret_cast<int8_t *>(lrxbuf->buf), outbufsize, dc_offsets.i8);
-                break;
-            case LIBRFNM_STREAM_FORMAT_CS16:
-                applyQuadDcOffset(reinterpret_cast<int16_t *>(lrxbuf->buf), outbufsize / 2, dc_offsets.i16);
-                break;
-            case LIBRFNM_STREAM_FORMAT_CF32:
-                applyQuadDcOffset(reinterpret_cast<float *>(lrxbuf->buf), outbufsize / 4, dc_offsets.f32);
-                break;
+            if ((read_elems + (outbufsize / bytes_per_ele)) > numElems) {
+
+                overflowing_by_elems = (read_elems + (outbufsize / bytes_per_ele)) - numElems;
+                can_copy_bytes = outbufsize - (overflowing_by_elems * bytes_per_ele);
             }
+
+            std::memcpy(((uint8_t*)buffs[buf_idx]) + (bytes_per_ele * read_elems), lrxbuf->buf, can_copy_bytes);
+
+            if (overflowing_by_elems) {
+                std::memcpy(partial_rx_buf[channel].buf, (lrxbuf->buf + can_copy_bytes), outbufsize - can_copy_bytes);
+                partial_rx_buf[channel].left = outbufsize - can_copy_bytes;
+                partial_rx_buf[channel].offset = 0;
+            }
+
+            lrfnm->rx_qbuf(lrxbuf);
+            read_elems += (outbufsize / bytes_per_ele) - overflowing_by_elems;
         }
 
-        if ((read_elems + (outbufsize / bytes_per_ele)) > numElems) {
-
-            overflowing_by_elems = (read_elems + (outbufsize / bytes_per_ele)) - numElems;
-            can_copy_bytes = outbufsize - (overflowing_by_elems * bytes_per_ele);
-        }
-
-        std::memcpy(((uint8_t*)buffs[0]) + (bytes_per_ele * read_elems), lrxbuf->buf, can_copy_bytes);
-
-        if (overflowing_by_elems) {
-            std::memcpy(partial_rx_buf.buf, (lrxbuf->buf + can_copy_bytes), outbufsize - can_copy_bytes);
-            partial_rx_buf.left = outbufsize - can_copy_bytes;
-            partial_rx_buf.offset = 0;
-        }
-
-        lrfnm->rx_qbuf(lrxbuf);
-        read_elems += (outbufsize / bytes_per_ele) - overflowing_by_elems;
-    }
-
-    if (read_elems < numElems) {
-        m_readstream_time_diff = std::chrono::duration<double>(std::chrono::system_clock::now() - m_readstream_start_time).count();
-        if (m_readstream_time_diff < ((double)timeoutUs) / 1000000.0) {
-            goto keep_waiting;
-        }
+        buf_idx++;
     }
 
     return read_elems;
@@ -430,29 +615,61 @@ bool SoapyRFNM::hasDCOffsetMode(const int direction, const size_t channel) const
     return true;
 }
 
-void SoapyRFNM::setDCOffsetMode(const int dir, const size_t channel, const bool automatic) {
-    dc_correction = automatic;
+void SoapyRFNM::setDCOffsetMode(const int direction, const size_t channel, const bool automatic) {
+    if (direction == SOAPY_SDR_RX) {
+        if (channel >= rx_chan_count) {
+            throw std::runtime_error("nonexistent channel");
+        }
+
+        dc_correction[channel] = automatic;
+    }
 }
 
-bool SoapyRFNM::getDCOffsetMode(const int dir, const size_t channel) const {
-    return dc_correction;
+bool SoapyRFNM::getDCOffsetMode(const int direction, const size_t channel) const {
+    if (direction == SOAPY_SDR_RX) {
+        if (channel >= rx_chan_count) {
+            throw std::runtime_error("nonexistent channel");
+        }
+
+        return dc_correction[channel];
+    } else {
+        return false;
+    }
 }
 
 void SoapyRFNM::setRFNM(uint16_t applies) {
     rfnm_api_failcode ret = lrfnm->set(applies);
 
+    size_t chan_idx;
+    switch (applies) {
+    case LIBRFNM_APPLY_CH0_RX:
+        chan_idx = 0;
+        break;
+    case LIBRFNM_APPLY_CH1_RX:
+        chan_idx = 1;
+        break;
+    case LIBRFNM_APPLY_CH2_RX:
+        chan_idx = 2;
+        break;
+    case LIBRFNM_APPLY_CH3_RX:
+        chan_idx = 3;
+        break;
+    default:
+        chan_idx = 0;
+    }
+
     // GCC cannot pass references to values in packed structs, so we need stack copies
-    uint64_t freq = lrfnm->s->rx.ch[0].freq;
-    int8_t gain = lrfnm->s->rx.ch[0].gain;
+    uint64_t freq = lrfnm->s->rx.ch[chan_idx].freq;
+    int8_t gain = lrfnm->s->rx.ch[chan_idx].gain;
 
     switch (ret) {
     case RFNM_API_OK:
         return;
     case RFNM_API_TUNE_FAIL:
-        spdlog::error("Failure tuning to {} Hz", freq);
+        spdlog::error("Failure tuning channel {} to {} Hz", chan_idx, freq);
         throw std::runtime_error("Tuning failure");
     case RFNM_API_GAIN_FAIL:
-        spdlog::error("Failure setting gain to {} dB", gain);
+        spdlog::error("Failure setting channel {} gain to {} dB", chan_idx, gain);
         throw std::runtime_error("Gain setting failure");
     case RFNM_API_TIMEOUT:
         spdlog::error("Timeout configuring RFNM");
