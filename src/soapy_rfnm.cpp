@@ -109,6 +109,64 @@ SoapySDR::Kwargs SoapyRFNM::getChannelInfo(const int direction, const size_t cha
     return args;
 }
 
+
+SoapySDR::ArgInfoList SoapyRFNM::getSettingInfo(const int direction, const size_t channel) const {
+    SoapySDR::ArgInfoList channel_settings_args;
+    if (direction == SOAPY_SDR_RX) {
+        SoapySDR::ArgInfo rm_notch_arg;
+        rm_notch_arg.key = "fm_notch";
+        rm_notch_arg.description = "FM notch filter control";
+        rm_notch_arg.type = SoapySDR::ArgInfo::STRING,
+        rm_notch_arg.options = {"auto", "on", "off"};
+        rm_notch_arg.value = "auto";
+
+        SoapySDR::ArgInfo bias_tee_arg;
+        bias_tee_arg.key = "bias_tee_en";
+        bias_tee_arg.description = "Antenna bias tee control";
+        bias_tee_arg.type = SoapySDR::ArgInfo::BOOL,
+        bias_tee_arg.value = "false";
+
+        channel_settings_args.push_back(rm_notch_arg);
+        channel_settings_args.push_back(bias_tee_arg);
+    }
+    return channel_settings_args;
+}
+
+std::string SoapyRFNM::readSetting(const int direction, const size_t channel, const std::string &key) const {
+    if (key == "bias_tee_en") {
+        if (direction == SOAPY_SDR_TX) {
+            return lrfnm->s->tx.ch[channel].bias_tee == RFNM_BIAS_TEE_ON ? "true" : "false";
+        } else {
+            return lrfnm->s->rx.ch[channel].bias_tee == RFNM_BIAS_TEE_ON ? "true" : "false";
+        }
+    }
+    if (key == "fm_notch" && direction == SOAPY_SDR_RX) {
+        const auto fm_notch_status = lrfnm->s->rx.ch[channel].fm_notch;
+        return
+            (fm_notch_status == RFNM_FM_NOTCH_ON) ? "on" :
+            (fm_notch_status == RFNM_FM_NOTCH_OFF) ? "off" :
+            "auto";
+    }
+    return "";
+}
+
+void SoapyRFNM::writeSetting(const int direction, const size_t channel, const std::string &key, const std::string &value) {
+    if (direction == SOAPY_SDR_RX) {
+        if (key == "bias_tee_en") {
+            lrfnm->s->rx.ch[channel].bias_tee =
+                (value == "true") ? RFNM_BIAS_TEE_ON :
+                RFNM_BIAS_TEE_OFF;
+        }
+        if (key == "fm_notch") {
+            lrfnm->s->rx.ch[channel].fm_notch =
+                (value == "on") ? RFNM_FM_NOTCH_ON :
+                (value == "off") ? RFNM_FM_NOTCH_OFF :
+                RFNM_FM_NOTCH_AUTO;
+        }
+        setRFNM(librfnm_rx_chan_apply[channel]);
+    }
+}
+
 size_t SoapyRFNM::getStreamMTU(SoapySDR::Stream* stream) const {
     return RFNM_USB_RX_PACKET_ELEM_CNT * 16;
 }

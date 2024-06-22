@@ -100,6 +100,11 @@ public:
     void setDCOffsetMode(const int direction, const size_t channel, const bool automatic) override;
     bool getDCOffsetMode(const int direction, const size_t channel) const override;
 
+    // Channel Settings API
+    SoapySDR::ArgInfoList getSettingInfo(const int direction, const size_t channel) const override;
+    std::string readSetting(const int direction, const size_t channel, const std::string &key) const override;
+    void writeSetting(const int direction, const size_t channel, const std::string &key, const std::string &value) override;
+
 private:
     void setRFNM(uint16_t applies);
 
