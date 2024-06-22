@@ -41,6 +41,8 @@ public:
 
     [[nodiscard]] SoapySDR::Kwargs getHardwareInfo() const override;
 
+    SoapySDR::Kwargs getChannelInfo(const int direction, const size_t channel) const override;
+
     // Stream API
     SoapySDR::Stream* setupStream(const int direction,
         const std::string& format,

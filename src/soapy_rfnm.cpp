@@ -91,6 +91,24 @@ SoapySDR::Kwargs SoapyRFNM::getHardwareInfo() const {
     return {};
 }
 
+SoapySDR::Kwargs SoapyRFNM::getChannelInfo(const int direction, const size_t channel) const {
+    spdlog::info("RFNMDevice::getChannelInfo()");
+    SoapySDR::Kwargs args;
+    args["name"] = "RB";
+    if (direction == SOAPY_SDR_TX) {
+        args["name"] += (char)('A' + lrfnm->s->tx.ch[channel].dgb_id);
+        args["name"] += "_TX" +
+            std::to_string(lrfnm->s->tx.ch[channel].dgb_ch_id + 1);
+        args["dac_id"] = std::to_string(lrfnm->s->tx.ch[channel].dac_id);
+    } else {
+        args["name"] += (char)('A' + lrfnm->s->rx.ch[channel].dgb_id);
+        args["name"] += "_RX" +
+            std::to_string(lrfnm->s->rx.ch[channel].dgb_ch_id + 1);
+        args["adc_id"] = std::to_string(lrfnm->s->rx.ch[channel].adc_id);
+    }
+    return args;
+}
+
 size_t SoapyRFNM::getStreamMTU(SoapySDR::Stream* stream) const {
     return RFNM_USB_RX_PACKET_ELEM_CNT * 16;
 }
