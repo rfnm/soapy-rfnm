@@ -41,6 +41,8 @@ public:
 
     [[nodiscard]] SoapySDR::Kwargs getHardwareInfo() const override;
 
+    SoapySDR::Kwargs getChannelInfo(const int direction, const size_t channel) const override;
+
     // Stream API
     SoapySDR::Stream* setupStream(const int direction,
         const std::string& format,
@@ -97,6 +99,11 @@ public:
     bool hasDCOffsetMode(const int direction, const size_t channel) const override;
     void setDCOffsetMode(const int direction, const size_t channel, const bool automatic) override;
     bool getDCOffsetMode(const int direction, const size_t channel) const override;
+
+    // Channel Settings API
+    SoapySDR::ArgInfoList getSettingInfo(const int direction, const size_t channel) const override;
+    std::string readSetting(const int direction, const size_t channel, const std::string &key) const override;
+    void writeSetting(const int direction, const size_t channel, const std::string &key, const std::string &value) override;
 
 private:
     void setRFNM(uint16_t applies);
