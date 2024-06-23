@@ -271,6 +271,8 @@ int SoapyRFNM::activateStream(SoapySDR::Stream* stream, const int flags, const l
         const size_t numElems) {
     spdlog::info("RFNMDevice::activateStream()");
 
+    phytimer_offset = 1;
+
     for (size_t channel = 0; channel < MAX_RX_CHAN_COUNT; channel++) {
         if (lrfnm->s->rx.ch[channel].enable != RFNM_CH_ON) {
             continue;
@@ -283,9 +285,15 @@ int SoapyRFNM::activateStream(SoapySDR::Stream* stream, const int flags, const l
             throw std::runtime_error("timeout activating stream");
         }
 
+        if (phytimer_offset > 0) {
+            phytimer_offset = -1.0 * lrxbuf->phytimer * phytimer_tick;
+            last_phytimer = lrxbuf->phytimer;
+        }
+
         std::memcpy(partial_rx_buf[channel].buf, lrxbuf->buf, outbufsize);
         partial_rx_buf[channel].left = outbufsize;
         partial_rx_buf[channel].offset = 0;
+        partial_rx_buf[channel].phytimer = lrxbuf->phytimer;
         lrfnm->rx_qbuf(lrxbuf);
 
         // Compute initial DC offsets
@@ -548,6 +556,10 @@ SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string&
         }
     }
 
+    // all of these are in seconds
+    phytimer_tick = 1.0 / (lrfnm->s->hwinfo.clock.dcs_clk * 4);
+    phytimer_period = 0x100000000 / (lrfnm->s->hwinfo.clock.dcs_clk * 4.0);
+
     // flush old junk before streaming new data
     lrfnm->rx_flush(20);
 
@@ -555,6 +567,7 @@ SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string&
     for (size_t channel : channels) {
         lrfnm->s->rx.ch[channel].enable = RFNM_CH_ON;
         apply_mask |= librfnm_rx_chan_apply[channel];
+        phytimer_ticks_per_sample[channel] = 4 * lrfnm->s->rx.ch[channel].samp_freq_div_n;
     }
     setRFNM(apply_mask);
 
@@ -593,6 +606,8 @@ int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const si
     size_t read_elems[MAX_RX_CHAN_COUNT] = {};
     size_t buf_idx = 0;
     bool need_more_data = false;
+    bool time_set = false;
+    uint32_t phytimer_start;
 
     for (size_t channel = 0; channel < MAX_RX_CHAN_COUNT; channel++) {
         if (lrfnm->s->rx.ch[channel].enable != RFNM_CH_ON) {
@@ -606,8 +621,16 @@ int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const si
             }
 
             std::memcpy(((uint8_t*)buffs[buf_idx]), partial_rx_buf[channel].buf + partial_rx_buf[channel].offset, can_write_bytes);
-            read_elems[channel] += (can_write_bytes / bytes_per_ele);
 
+            size_t elems_written = can_write_bytes / bytes_per_ele;
+            read_elems[channel] += elems_written;
+
+            if (!time_set) {
+                phytimer_start = partial_rx_buf[channel].phytimer;
+                time_set = true;
+            }
+
+            partial_rx_buf[channel].phytimer += elems_written * phytimer_ticks_per_sample[channel];
             partial_rx_buf[channel].left -= can_write_bytes;
             partial_rx_buf[channel].offset += can_write_bytes;
         }
@@ -641,6 +664,11 @@ int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const si
         for (size_t channel = 0; channel < MAX_RX_CHAN_COUNT; channel++) {
             if (lrfnm->s->rx.ch[channel].enable != RFNM_CH_ON) {
                 continue;
+            }
+
+            if (!time_set) {
+                phytimer_start = pending_rx_buf[channel]->phytimer;
+                time_set = true;
             }
 
             size_t overflowing_by_elems = 0;
@@ -695,6 +723,8 @@ int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const si
                         outbufsize - can_copy_bytes);
                 partial_rx_buf[channel].left = outbufsize - can_copy_bytes;
                 partial_rx_buf[channel].offset = 0;
+                partial_rx_buf[channel].phytimer = pending_rx_buf[channel]->phytimer +
+                        overflowing_by_elems * phytimer_ticks_per_sample[channel];
             }
 
             read_elems[channel] += (outbufsize / bytes_per_ele) - overflowing_by_elems;
@@ -707,6 +737,17 @@ int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const si
         }
 
         rx_qbuf_multi();
+    }
+
+    if (time_set) {
+        // handle wraparound of phytimer
+        if (phytimer_start < last_phytimer) {
+            phytimer_offset += phytimer_period;
+        }
+        last_phytimer = phytimer_start;
+
+        double time = phytimer_offset + phytimer_start * phytimer_tick;
+        timeNs = (long long int)(time * 1e9);
     }
 
     return read_elems[0];
