@@ -49,7 +49,7 @@ SoapyRFNM::SoapyRFNM(const SoapySDR::Kwargs& args) {
         lrfnm->s->rx.ch[i].enable = RFNM_CH_OFF;
         lrfnm->s->rx.ch[i].stream = RFNM_CH_STREAM_AUTO;
         lrfnm->s->rx.ch[i].freq = RFNM_MHZ_TO_HZ(2450);
-        lrfnm->s->rx.ch[i].path = lrfnm->s->rx.ch[0].path_preferred;
+        lrfnm->s->rx.ch[i].path = lrfnm->s->rx.ch[i].path_preferred;
         lrfnm->s->rx.ch[i].samp_freq_div_n = 1;
         lrfnm->s->rx.ch[i].gain = 0;
         lrfnm->s->rx.ch[i].rfic_lpf_bw = 80;
