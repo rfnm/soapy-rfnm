@@ -21,6 +21,7 @@ struct rfnm_soapy_partial_buf {
     uint8_t* buf;
     uint32_t left;
     uint32_t offset;
+    uint32_t phytimer;
 };
 
 union rfnm_quad_dc_offset {
@@ -108,6 +109,9 @@ public:
 private:
     void setRFNM(uint16_t applies);
 
+    rfnm_api_failcode rx_dqbuf_multi(uint32_t wait_for_ms);
+    void rx_qbuf_multi();
+
     size_t rx_chan_count = 0;
     bool dc_correction[MAX_RX_CHAN_COUNT] = {false};
     union rfnm_quad_dc_offset dc_offsets[MAX_RX_CHAN_COUNT] = {};
@@ -118,8 +122,17 @@ private:
     int outbufsize = 0;
     //int inbufsize = 0;
 
+    double phytimer_offset = 0;
+    double phytimer_period = 0;
+    double phytimer_tick = 0;
+    double next_timestamp = 0;
+    uint32_t last_phytimer = 0;
+    uint32_t phytimer_ticks_per_sample[MAX_RX_CHAN_COUNT] = {};
+
     struct librfnm_rx_buf rxbuf[SOAPY_RFNM_BUFCNT] = {};
     //struct librfnm_tx_buf txbuf[SOAPY_RFNM_BUFCNT];
 
     struct rfnm_soapy_partial_buf partial_rx_buf[MAX_RX_CHAN_COUNT] = {};
+
+    struct librfnm_rx_buf * pending_rx_buf[MAX_RX_CHAN_COUNT] = {};
 };
