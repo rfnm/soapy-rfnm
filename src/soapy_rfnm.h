@@ -108,6 +108,9 @@ public:
 private:
     void setRFNM(uint16_t applies);
 
+    rfnm_api_failcode rx_dqbuf_multi(uint32_t wait_for_ms);
+    void rx_qbuf_multi();
+
     size_t rx_chan_count = 0;
     bool dc_correction[MAX_RX_CHAN_COUNT] = {false};
     union rfnm_quad_dc_offset dc_offsets[MAX_RX_CHAN_COUNT] = {};
@@ -122,4 +125,6 @@ private:
     //struct librfnm_tx_buf txbuf[SOAPY_RFNM_BUFCNT];
 
     struct rfnm_soapy_partial_buf partial_rx_buf[MAX_RX_CHAN_COUNT] = {};
+
+    struct librfnm_rx_buf * pending_rx_buf[MAX_RX_CHAN_COUNT] = {};
 };

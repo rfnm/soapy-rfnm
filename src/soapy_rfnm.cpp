@@ -581,6 +581,7 @@ void SoapyRFNM::closeStream(SoapySDR::Stream* stream) {
 
     // flush buffers
     lrfnm->rx_flush(0);
+    rx_qbuf_multi();
 
     stream_setup = false;
 }
@@ -589,18 +590,14 @@ int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const si
         long long int& timeNs, const long timeoutUs) {
     auto timeout = std::chrono::system_clock::now() + std::chrono::microseconds(timeoutUs);
     size_t bytes_per_ele = lrfnm->s->transport_status.rx_stream_format;
-    struct librfnm_rx_buf* lrxbuf;
-    size_t read_elems = 0;
+    size_t read_elems[MAX_RX_CHAN_COUNT] = {};
     size_t buf_idx = 0;
-
-    // TODO: keep usb_cc of each channel in sync
+    bool need_more_data = false;
 
     for (size_t channel = 0; channel < MAX_RX_CHAN_COUNT; channel++) {
         if (lrfnm->s->rx.ch[channel].enable != RFNM_CH_ON) {
             continue;
         }
-
-        read_elems = 0;
 
         if (partial_rx_buf[channel].left) {
             size_t can_write_bytes = numElems * bytes_per_ele;
@@ -609,82 +606,110 @@ int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const si
             }
 
             std::memcpy(((uint8_t*)buffs[buf_idx]), partial_rx_buf[channel].buf + partial_rx_buf[channel].offset, can_write_bytes);
-            read_elems += (can_write_bytes / bytes_per_ele);
+            read_elems[channel] += (can_write_bytes / bytes_per_ele);
 
             partial_rx_buf[channel].left -= can_write_bytes;
             partial_rx_buf[channel].offset += can_write_bytes;
         }
 
-        while (read_elems < numElems) {
-            uint32_t wait_ms = 0;
+        if (read_elems[channel] < numElems) {
+            need_more_data = true;
+        }
+
+        buf_idx++;
+    }
+
+    while (need_more_data) {
+        uint32_t wait_ms = 0;
+        auto time_remaining = timeout - std::chrono::system_clock::now();
+        if (time_remaining > std::chrono::duration<int64_t>::zero()) {
+            wait_ms = std::chrono::duration_cast<std::chrono::milliseconds>(time_remaining).count();
+        }
+
+        if (rx_dqbuf_multi(wait_ms)) {
+            if (timeoutUs >= 10000) {
+                spdlog::info("read timeout, got {} of {} within {} us", read_elems[0], numElems, timeoutUs);
+            }
+            break;
+        }
+
+        // TODO: align buffers for each channel based on phy timer value
+
+        need_more_data = false;
+        buf_idx = 0;
+
+        for (size_t channel = 0; channel < MAX_RX_CHAN_COUNT; channel++) {
+            if (lrfnm->s->rx.ch[channel].enable != RFNM_CH_ON) {
+                continue;
+            }
+
             size_t overflowing_by_elems = 0;
             size_t can_copy_bytes = outbufsize;
 
-            if (timeoutUs > 0) {
-                auto time_remaining = timeout - std::chrono::system_clock::now();
-                if (time_remaining > std::chrono::duration<int64_t>::zero()) {
-                    wait_ms = std::chrono::duration_cast<std::chrono::milliseconds>(time_remaining).count();
-                }
-            }
-
-            if (lrfnm->rx_dqbuf(&lrxbuf, librfnm_rx_chan_flags[channel], wait_ms)) {
-                if (timeoutUs >= 10000) {
-                    spdlog::info("read timeout, got {} of {} within {} us", read_elems, numElems, timeoutUs);
-                }
-                break;
-            }
-
             if (dc_correction[channel]) {
                 // periodically recalibrate DC offset to account for drift
-                if ((lrxbuf->usb_cc & 0xF) == 0) {
+                if ((pending_rx_buf[channel]->usb_cc & 0xF) == 0) {
                     switch (lrfnm->s->transport_status.rx_stream_format) {
                     case LIBRFNM_STREAM_FORMAT_CS8:
-                        measQuadDcOffset(reinterpret_cast<int8_t *>(lrxbuf->buf), outbufsize, dc_offsets[channel].i8, 0.1f);
+                        measQuadDcOffset(reinterpret_cast<int8_t *>(pending_rx_buf[channel]->buf),
+                                outbufsize, dc_offsets[channel].i8, 0.1f);
                         break;
                     case LIBRFNM_STREAM_FORMAT_CS16:
-                        measQuadDcOffset(reinterpret_cast<int16_t *>(lrxbuf->buf), outbufsize / 2, dc_offsets[channel].i16, 0.1f);
+                        measQuadDcOffset(reinterpret_cast<int16_t *>(pending_rx_buf[channel]->buf),
+                                outbufsize / 2, dc_offsets[channel].i16, 0.1f);
                         break;
                     case LIBRFNM_STREAM_FORMAT_CF32:
-                        measQuadDcOffset(reinterpret_cast<float *>(lrxbuf->buf), outbufsize / 4, dc_offsets[channel].f32, 0.1f);
+                        measQuadDcOffset(reinterpret_cast<float *>(pending_rx_buf[channel]->buf),
+                                outbufsize / 4, dc_offsets[channel].f32, 0.1f);
                         break;
                     }
                 }
 
                 switch (lrfnm->s->transport_status.rx_stream_format) {
                 case LIBRFNM_STREAM_FORMAT_CS8:
-                    applyQuadDcOffset(reinterpret_cast<int8_t *>(lrxbuf->buf), outbufsize, dc_offsets[channel].i8);
+                    applyQuadDcOffset(reinterpret_cast<int8_t *>(pending_rx_buf[channel]->buf),
+                            outbufsize, dc_offsets[channel].i8);
                     break;
                 case LIBRFNM_STREAM_FORMAT_CS16:
-                    applyQuadDcOffset(reinterpret_cast<int16_t *>(lrxbuf->buf), outbufsize / 2, dc_offsets[channel].i16);
+                    applyQuadDcOffset(reinterpret_cast<int16_t *>(pending_rx_buf[channel]->buf),
+                            outbufsize / 2, dc_offsets[channel].i16);
                     break;
                 case LIBRFNM_STREAM_FORMAT_CF32:
-                    applyQuadDcOffset(reinterpret_cast<float *>(lrxbuf->buf), outbufsize / 4, dc_offsets[channel].f32);
+                    applyQuadDcOffset(reinterpret_cast<float *>(pending_rx_buf[channel]->buf),
+                            outbufsize / 4, dc_offsets[channel].f32);
                     break;
                 }
             }
 
-            if ((read_elems + (outbufsize / bytes_per_ele)) > numElems) {
+            if ((read_elems[channel] + (outbufsize / bytes_per_ele)) > numElems) {
 
-                overflowing_by_elems = (read_elems + (outbufsize / bytes_per_ele)) - numElems;
+                overflowing_by_elems = (read_elems[channel] + (outbufsize / bytes_per_ele)) - numElems;
                 can_copy_bytes = outbufsize - (overflowing_by_elems * bytes_per_ele);
             }
 
-            std::memcpy(((uint8_t*)buffs[buf_idx]) + (bytes_per_ele * read_elems), lrxbuf->buf, can_copy_bytes);
+            std::memcpy(((uint8_t*)buffs[buf_idx]) + (bytes_per_ele * read_elems[channel]),
+                    pending_rx_buf[channel]->buf, can_copy_bytes);
 
             if (overflowing_by_elems) {
-                std::memcpy(partial_rx_buf[channel].buf, (lrxbuf->buf + can_copy_bytes), outbufsize - can_copy_bytes);
+                std::memcpy(partial_rx_buf[channel].buf, (pending_rx_buf[channel]->buf + can_copy_bytes),
+                        outbufsize - can_copy_bytes);
                 partial_rx_buf[channel].left = outbufsize - can_copy_bytes;
                 partial_rx_buf[channel].offset = 0;
             }
 
-            lrfnm->rx_qbuf(lrxbuf);
-            read_elems += (outbufsize / bytes_per_ele) - overflowing_by_elems;
+            read_elems[channel] += (outbufsize / bytes_per_ele) - overflowing_by_elems;
+
+            if (read_elems[channel] < numElems) {
+                need_more_data = true;
+            }
+
+            buf_idx++;
         }
 
-        buf_idx++;
+        rx_qbuf_multi();
     }
 
-    return read_elems;
+    return read_elems[0];
 }
 
 bool SoapyRFNM::hasDCOffsetMode(const int direction, const size_t channel) const {
@@ -756,6 +781,39 @@ void SoapyRFNM::setRFNM(uint16_t applies) {
     default:
         spdlog::error("Error {} configuring RFNM", static_cast<int>(ret));
         throw std::runtime_error("Error configuring RFNM");
+    }
+}
+
+// only return data once a buffer has been dequeued from every active channel
+// TODO: handle dropped/skipped buffers that could result in channel desync
+rfnm_api_failcode SoapyRFNM::rx_dqbuf_multi(uint32_t wait_for_ms) {
+    rfnm_api_failcode ret = RFNM_API_OK;
+    auto timeout = std::chrono::system_clock::now() + std::chrono::milliseconds(wait_for_ms);
+
+    for (size_t channel = 0; channel < MAX_RX_CHAN_COUNT; channel++) {
+        if (lrfnm->s->rx.ch[channel].enable != RFNM_CH_ON || pending_rx_buf[channel]) {
+            continue;
+        }
+
+        uint32_t wait_ms = 0;
+        auto time_remaining = timeout - std::chrono::system_clock::now();
+        if (time_remaining > std::chrono::duration<int64_t>::zero()) {
+            wait_ms = std::chrono::duration_cast<std::chrono::milliseconds>(time_remaining).count();
+        }
+
+        ret = lrfnm->rx_dqbuf(&pending_rx_buf[channel], librfnm_rx_chan_flags[channel], wait_ms);
+        if (ret) break;
+    }
+
+    return ret;
+}
+
+void SoapyRFNM::rx_qbuf_multi() {
+    for (size_t channel = 0; channel < MAX_RX_CHAN_COUNT; channel++) {
+        if (pending_rx_buf[channel]) {
+            lrfnm->rx_qbuf(pending_rx_buf[channel]);
+            pending_rx_buf[channel] = nullptr;
+        }
     }
 }
 
