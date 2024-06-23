@@ -125,6 +125,7 @@ private:
     double phytimer_offset = 0;
     double phytimer_period = 0;
     double phytimer_tick = 0;
+    double next_timestamp = 0;
     uint32_t last_phytimer = 0;
     uint32_t phytimer_ticks_per_sample[MAX_RX_CHAN_COUNT] = {};
 

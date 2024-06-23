@@ -288,6 +288,7 @@ int SoapyRFNM::activateStream(SoapySDR::Stream* stream, const int flags, const l
         if (phytimer_offset > 0) {
             phytimer_offset = -1.0 * lrxbuf->phytimer * phytimer_tick;
             last_phytimer = lrxbuf->phytimer;
+            next_timestamp = 0;
         }
 
         std::memcpy(partial_rx_buf[channel].buf, lrxbuf->buf, outbufsize);
@@ -608,6 +609,7 @@ int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const si
     bool need_more_data = false;
     bool time_set = false;
     uint32_t phytimer_start;
+    size_t first_chan;
 
     for (size_t channel = 0; channel < MAX_RX_CHAN_COUNT; channel++) {
         if (lrfnm->s->rx.ch[channel].enable != RFNM_CH_ON) {
@@ -627,6 +629,7 @@ int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const si
 
             if (!time_set) {
                 phytimer_start = partial_rx_buf[channel].phytimer;
+                first_chan = channel;
                 time_set = true;
             }
 
@@ -668,6 +671,7 @@ int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const si
 
             if (!time_set) {
                 phytimer_start = pending_rx_buf[channel]->phytimer;
+                first_chan = channel;
                 time_set = true;
             }
 
@@ -746,11 +750,28 @@ int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const si
         }
         last_phytimer = phytimer_start;
 
-        double time = phytimer_offset + phytimer_start * phytimer_tick;
-        timeNs = (long long int)(time * 1e9);
-    }
+        double timestamp = phytimer_offset + last_phytimer * phytimer_tick;
+        double delta = timestamp - next_timestamp;
+        double tolerance = phytimer_ticks_per_sample[first_chan] * phytimer_tick;
+        if (delta > tolerance || delta < -tolerance) {
+            spdlog::info("Timestamp discontinuity {} {}", next_timestamp, timestamp);
+        }
 
-    return read_elems[0];
+        // for monotonicity's sake
+        if (timestamp < next_timestamp) {
+            timeNs = (long long int)(next_timestamp * 1e9);
+        } else {
+            timeNs = (long long int)(timestamp * 1e9);
+        }
+
+        // predict the timestamp of the next chunk
+        next_timestamp = timestamp + read_elems[first_chan] * phytimer_tick * phytimer_ticks_per_sample[first_chan];
+
+        return read_elems[first_chan];
+    } else {
+        timeNs = (long long int)(next_timestamp * 1e9);
+        return 0;
+    }
 }
 
 bool SoapyRFNM::hasDCOffsetMode(const int direction, const size_t channel) const {
