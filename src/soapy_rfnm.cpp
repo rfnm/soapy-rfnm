@@ -516,9 +516,17 @@ SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string&
     }
 
     // bounds check channels before we start the stream
+    // also make sure that all channels in the stream have matching sample rates
+    double samp_rate = 0;
     for (size_t channel : channels) {
         if (channel >= rx_chan_count) {
             throw std::runtime_error("nonexistent channel");
+        }
+
+        if (samp_rate == 0) {
+            samp_rate = getSampleRate(direction, channel);
+        } else if (getSampleRate(direction, channel) != samp_rate) {
+            throw std::runtime_error("sample rate mismatch");
         }
     }
 
