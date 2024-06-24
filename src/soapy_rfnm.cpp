@@ -50,7 +50,7 @@ SoapyRFNM::SoapyRFNM(const SoapySDR::Kwargs& args) {
         lrfnm->s->rx.ch[i].stream = RFNM_CH_STREAM_AUTO;
         lrfnm->s->rx.ch[i].freq = RFNM_MHZ_TO_HZ(2450);
         lrfnm->s->rx.ch[i].path = lrfnm->s->rx.ch[i].path_preferred;
-        lrfnm->s->rx.ch[i].samp_freq_div_n = 1;
+        lrfnm->s->rx.ch[i].samp_freq_div_n = 2;
         lrfnm->s->rx.ch[i].gain = 0;
         lrfnm->s->rx.ch[i].rfic_lpf_bw = 80;
         apply_mask |= librfnm_rx_chan_apply[i];
@@ -516,9 +516,17 @@ SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string&
     }
 
     // bounds check channels before we start the stream
+    // also make sure that all channels in the stream have matching sample rates
+    double samp_rate = 0;
     for (size_t channel : channels) {
         if (channel >= rx_chan_count) {
             throw std::runtime_error("nonexistent channel");
+        }
+
+        if (samp_rate == 0) {
+            samp_rate = getSampleRate(direction, channel);
+        } else if (getSampleRate(direction, channel) != samp_rate) {
+            throw std::runtime_error("sample rate mismatch");
         }
     }
 
