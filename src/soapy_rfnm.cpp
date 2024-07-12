@@ -698,6 +698,7 @@ int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const si
                 // buffer was lost
                 // TODO: increment by multiple of buf_elems?
                 sample_counter[channel] += samp_delta - buf_elems;
+                spdlog::info("channel {} skip {} samples", channel, samp_delta - buf_elems);
             }
 
             if (!time_set) {
