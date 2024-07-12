@@ -271,6 +271,9 @@ int SoapyRFNM::activateStream(SoapySDR::Stream* stream, const int flags, const l
         const size_t numElems) {
     spdlog::info("RFNMDevice::activateStream()");
 
+    uint32_t first_phytimer;
+    bool first_phytimer_set = false;
+
     for (size_t channel = 0; channel < MAX_RX_CHAN_COUNT; channel++) {
         if (lrfnm->s->rx.ch[channel].enable != RFNM_CH_ON) {
             continue;
@@ -284,6 +287,17 @@ int SoapyRFNM::activateStream(SoapySDR::Stream* stream, const int flags, const l
         }
 
         last_phytimer[channel] = lrxbuf->phytimer;
+
+        // handle staggered ADC start times
+        if (!first_phytimer_set) {
+            first_phytimer = lrxbuf->phytimer;
+            first_phytimer_set = true;
+        } else {
+            uint32_t rounding_ticks = phytimer_ticks_per_sample[channel] / 2;
+            uint32_t samp_delta = (lrxbuf->phytimer - first_phytimer + rounding_ticks) /
+                                  phytimer_ticks_per_sample[channel];
+            sample_counter[channel] = samp_delta;
+        }
 
         std::memcpy(partial_rx_buf[channel].buf, lrxbuf->buf, outbufsize);
         partial_rx_buf[channel].left = outbufsize;
