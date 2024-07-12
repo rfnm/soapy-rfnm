@@ -692,11 +692,15 @@ int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const si
                                   phytimer_ticks_per_sample[channel];
             last_phytimer[channel] = pending_rx_buf[channel]->phytimer;
 
-            if (samp_delta < buf_elems - 1) {
-                // strange, shouldn't happen
-            } else if (samp_delta > buf_elems + 1) {
-                // buffer was lost
-                // TODO: increment by multiple of buf_elems?
+            // tolerance of +- 64 samples to deal with phytimer jitter
+            // note that phytimer is dequeue time, subject to interrupt servicing time
+            // phytimer timestamp is at a variable offset from buffer start time
+            if (samp_delta < buf_elems - 64) {
+                // samples were repeated (strange, shouldn't happen)
+                sample_counter[channel] -= buf_elems - samp_delta;
+                spdlog::info("channel {} repeat {} samples", channel, buf_elems - samp_delta);
+            } else if (samp_delta > buf_elems + 64) {
+                // samples were lost
                 sample_counter[channel] += samp_delta - buf_elems;
                 spdlog::info("channel {} skip {} samples", channel, samp_delta - buf_elems);
             }
