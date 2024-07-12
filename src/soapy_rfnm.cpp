@@ -271,6 +271,14 @@ int SoapyRFNM::activateStream(SoapySDR::Stream* stream, const int flags, const l
         const size_t numElems) {
     spdlog::info("RFNMDevice::activateStream()");
 
+    // workaround stale buffer firmware bug by discarding first few buffers
+    rx_dqbuf_multi(500);
+    rx_qbuf_multi();
+    rx_dqbuf_multi(100);
+    rx_qbuf_multi();
+    rx_dqbuf_multi(50);
+    rx_qbuf_multi();
+
     uint32_t first_phytimer;
     bool first_phytimer_set = false;
 
