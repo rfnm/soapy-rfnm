@@ -10,10 +10,10 @@ SoapyRFNM::SoapyRFNM(const SoapySDR::Kwargs& args) {
     spdlog::info("RFNMDevice::RFNMDevice()");
 
     if (args.count("serial") != 0) {
-        lrfnm = new rfnm::device(rfnm::LIBRFNM_TRANSPORT_USB, (std::string)args.at("serial"));
+        lrfnm = new rfnm::device(rfnm::TRANSPORT_USB, (std::string)args.at("serial"));
     }
     else {
-        lrfnm = new rfnm::device(rfnm::LIBRFNM_TRANSPORT_USB);
+        lrfnm = new rfnm::device(rfnm::TRANSPORT_USB);
     }
 
     rx_chan_count = lrfnm->get_rx_channel_count();
@@ -408,11 +408,11 @@ SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string&
     enum rfnm::stream_format stream_format;
 
     if (!format.compare(SOAPY_SDR_CF32)) {
-        stream_format = rfnm::LIBRFNM_STREAM_FORMAT_CF32;
+        stream_format = rfnm::STREAM_FORMAT_CF32;
     } else if (!format.compare(SOAPY_SDR_CS16)) {
-        stream_format = rfnm::LIBRFNM_STREAM_FORMAT_CS16;
+        stream_format = rfnm::STREAM_FORMAT_CS16;
     } else if (!format.compare(SOAPY_SDR_CS8)) {
-        stream_format = rfnm::LIBRFNM_STREAM_FORMAT_CS8;
+        stream_format = rfnm::STREAM_FORMAT_CS8;
     } else {
         throw std::runtime_error("setupStream invalid format " + format);
     }
@@ -490,16 +490,16 @@ void SoapyRFNM::setRFNM(uint16_t applies) {
 
     size_t chan_idx;
     switch (applies) {
-    case rfnm::LIBRFNM_APPLY_CH0_RX:
+    case rfnm::APPLY_CH0_RX:
         chan_idx = 0;
         break;
-    case rfnm::LIBRFNM_APPLY_CH1_RX:
+    case rfnm::APPLY_CH1_RX:
         chan_idx = 1;
         break;
-    case rfnm::LIBRFNM_APPLY_CH2_RX:
+    case rfnm::APPLY_CH2_RX:
         chan_idx = 2;
         break;
-    case rfnm::LIBRFNM_APPLY_CH3_RX:
+    case rfnm::APPLY_CH3_RX:
         chan_idx = 3;
         break;
     default:
@@ -539,7 +539,7 @@ SoapySDR::Device* rfnm_device_create(const SoapySDR::Kwargs& args) {
 }
 
 SoapySDR::KwargsList rfnm_device_find(const SoapySDR::Kwargs& args) {
-    std::vector<struct rfnm_dev_hwinfo> hwlist = rfnm::device::find(rfnm::LIBRFNM_TRANSPORT_USB);
+    std::vector<struct rfnm_dev_hwinfo> hwlist = rfnm::device::find(rfnm::TRANSPORT_USB);
     std::vector< SoapySDR::Kwargs> ret;
 
     for (auto& hw : hwlist)
