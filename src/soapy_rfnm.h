@@ -5,29 +5,8 @@
 #include <thread>
 #include <string>
 
-//#include <libusb-1.0/libusb.h>
-
-
 #include "SoapySDR/Device.hpp"
-
-
-#include "librfnm/librfnm.h"
-
-
-#define SOAPY_RFNM_BUFCNT LIBRFNM_MIN_RX_BUFCNT
-#define MAX_RX_CHAN_COUNT 4
-
-struct rfnm_soapy_partial_buf {
-    uint8_t* buf;
-    uint32_t left;
-    uint32_t offset;
-};
-
-union rfnm_quad_dc_offset {
-    int8_t i8[8];
-    int16_t i16[8];
-    float f32[8];
-};
+#include <librfnm/device.h>
 
 class SoapyRFNM : public SoapySDR::Device {
 public:
@@ -108,28 +87,10 @@ public:
 private:
     void setRFNM(uint16_t applies);
 
-    rfnm_api_failcode rx_dqbuf_multi(uint32_t wait_for_ms);
-    void rx_qbuf_multi();
-
     size_t rx_chan_count = 0;
-    bool dc_correction[MAX_RX_CHAN_COUNT] = {false};
-    union rfnm_quad_dc_offset dc_offsets[MAX_RX_CHAN_COUNT] = {};
+    bool dc_correction[rfnm::MAX_RX_CHANNELS] = {false};
 
-    librfnm* lrfnm;
+    rfnm::device * lrfnm;
 
-    bool stream_setup = false;
-    int outbufsize = 0;
-    //int inbufsize = 0;
-
-    uint64_t sample_counter[MAX_RX_CHAN_COUNT] = {};
-    double ns_per_sample[MAX_RX_CHAN_COUNT] = {};
-    uint32_t last_phytimer[MAX_RX_CHAN_COUNT] = {};
-    uint32_t phytimer_ticks_per_sample[MAX_RX_CHAN_COUNT] = {};
-
-    struct librfnm_rx_buf rxbuf[SOAPY_RFNM_BUFCNT] = {};
-    //struct librfnm_tx_buf txbuf[SOAPY_RFNM_BUFCNT];
-
-    struct rfnm_soapy_partial_buf partial_rx_buf[MAX_RX_CHAN_COUNT] = {};
-
-    struct librfnm_rx_buf * pending_rx_buf[MAX_RX_CHAN_COUNT] = {};
+    rfnm::rx_stream * rx_stream = nullptr;
 };

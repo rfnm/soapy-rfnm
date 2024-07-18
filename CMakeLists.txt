@@ -92,14 +92,8 @@ target_compile_features(soapy-rfnm PUBLIC cxx_std_23)
 target_link_libraries(soapy-rfnm PRIVATE
  ${SOAPYSDR_LIBRARIES}
  spdlog
- librfnm
+ rfnm_static
 )
-
-
-#target_include_directories(soapy-rfnm PUBLIC "../librfnm/librfnm.h")
-
-#include_directories("${CMAKE_SOURCE_DIR}/librfnm")
-
 
 #
 # Installation
