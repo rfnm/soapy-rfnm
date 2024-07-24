@@ -570,4 +570,4 @@ SoapySDR::KwargsList rfnm_device_find(const SoapySDR::Kwargs& args) {
     return ret;
 }
 
-[[maybe_unused]] static SoapySDR::Registry rfnm_module_registration("RFNM", &rfnm_device_find, &rfnm_device_create, SOAPY_SDR_ABI_VERSION);
+[[maybe_unused]] static SoapySDR::Registry rfnm_module_registration("rfnm", &rfnm_device_find, &rfnm_device_create, SOAPY_SDR_ABI_VERSION);
