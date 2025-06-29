@@ -47,8 +47,9 @@ public:
     std::vector<std::string> getStreamFormats(const int direction, const size_t channel) const override;
 
     // Sample Rate API
-    std::vector<double> listSampleRates(const int direction, const size_t channel) const override;
+    //std::vector<double> listSampleRates(const int direction, const size_t channel) const override;
     double getSampleRate(const int direction, const size_t channel) const override;
+    SoapySDR::RangeList getSampleRateRange(const int direction, const size_t channel) const override;
     void setSampleRate(const int direction, const size_t channel, const double rate) override;
 
     // Frequency API
@@ -89,6 +90,7 @@ private:
 
     size_t rx_chan_count = 0;
     bool dc_correction[rfnm::MAX_RX_CHANNELS] = {false};
+    bool pending_config[rfnm::MAX_RX_CHANNELS] = { false };
 
     rfnm::device * lrfnm;
 

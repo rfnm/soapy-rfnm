@@ -10,31 +10,19 @@ SoapyRFNM::SoapyRFNM(const SoapySDR::Kwargs& args) {
     spdlog::info("RFNMDevice::RFNMDevice()");
 
     if (args.count("serial") != 0) {
-        lrfnm = new rfnm::device(rfnm::TRANSPORT_USB, (std::string)args.at("serial"));
+        lrfnm = new rfnm::device(rfnm::TRANSPORT_FIND, (std::string)args.at("serial"));
     }
     else {
-        lrfnm = new rfnm::device(rfnm::TRANSPORT_USB);
+        lrfnm = new rfnm::device(rfnm::TRANSPORT_FIND);
     }
 
     rx_chan_count = lrfnm->get_rx_channel_count();
 
-    // sane defaults
-    uint16_t apply_mask = 0;
+    // Initialize tracking arrays
     for (size_t i = 0; i < rx_chan_count; i++) {
-        lrfnm->set_rx_channel_active(i, RFNM_CH_OFF, RFNM_CH_STREAM_AUTO, false);
-        lrfnm->set_rx_channel_freq(i, RFNM_MHZ_TO_HZ(2450), false);
-        lrfnm->set_rx_channel_path(i, lrfnm->get_rx_channel(i)->path_preferred, false);
-        lrfnm->set_rx_channel_samp_freq_div(i, 1, 2, false);
-        lrfnm->set_rx_channel_gain(i, 0, false);
-        lrfnm->set_rx_channel_rfic_lpf_bw(i, 80, false);
-        apply_mask |= rfnm::rx_channel_apply_flags[i];
+        dc_correction[i] = true;
+        pending_config[i] = false;  // No pending configuration yet
     }
-    setRFNM(apply_mask);
-
-    //s->tx.ch[0].freq = RFNM_MHZ_TO_HZ(2450);
-    //s->tx.ch[0].path = s->tx.ch[0].path_preferred;
-    //s->tx.ch[0].samp_freq_div_n = 2;
-
 }
 
 SoapyRFNM::~SoapyRFNM() {
@@ -62,12 +50,13 @@ SoapySDR::Kwargs SoapyRFNM::getChannelInfo(const int direction, const size_t cha
     SoapySDR::Kwargs args;
     args["name"] = "RB";
     if (direction == SOAPY_SDR_TX) {
-        const struct rfnm_api_tx_ch * ch = lrfnm->get_tx_channel(channel);
+        const struct rfnm_api_tx_ch* ch = lrfnm->get_tx_channel(channel);
         args["name"] += (char)('A' + ch->dgb_id);
         args["name"] += "_TX" + std::to_string(ch->dgb_ch_id + 1);
         args["dac_id"] = std::to_string(ch->dac_id);
-    } else {
-        const struct rfnm_api_rx_ch * ch = lrfnm->get_rx_channel(channel);
+    }
+    else {
+        const struct rfnm_api_rx_ch* ch = lrfnm->get_rx_channel(channel);
         args["name"] += (char)('A' + ch->dgb_id);
         args["name"] += "_RX" + std::to_string(ch->dgb_ch_id + 1);
         args["adc_id"] = std::to_string(ch->adc_id);
@@ -82,7 +71,7 @@ SoapySDR::ArgInfoList SoapyRFNM::getSettingInfo(const int direction, const size_
         rm_notch_arg.key = "fm_notch";
         rm_notch_arg.description = "FM notch filter control";
         rm_notch_arg.type = SoapySDR::ArgInfo::STRING;
-        rm_notch_arg.options = {"auto", "on", "off"};
+        rm_notch_arg.options = { "auto", "on", "off" };
         rm_notch_arg.value = "auto";
 
         SoapySDR::ArgInfo bias_tee_arg;
@@ -97,11 +86,12 @@ SoapySDR::ArgInfoList SoapyRFNM::getSettingInfo(const int direction, const size_
     return channel_settings_args;
 }
 
-std::string SoapyRFNM::readSetting(const int direction, const size_t channel, const std::string &key) const {
+std::string SoapyRFNM::readSetting(const int direction, const size_t channel, const std::string& key) const {
     if (key == "bias_tee_en") {
         if (direction == SOAPY_SDR_TX) {
             return lrfnm->get_tx_channel(channel)->bias_tee == RFNM_BIAS_TEE_ON ? "true" : "false";
-        } else {
+        }
+        else {
             return lrfnm->get_rx_channel(channel)->bias_tee == RFNM_BIAS_TEE_ON ? "true" : "false";
         }
     }
@@ -115,7 +105,7 @@ std::string SoapyRFNM::readSetting(const int direction, const size_t channel, co
     return "";
 }
 
-void SoapyRFNM::writeSetting(const int direction, const size_t channel, const std::string &key, const std::string &value) {
+void SoapyRFNM::writeSetting(const int direction, const size_t channel, const std::string& key, const std::string& value) {
     if (direction == SOAPY_SDR_RX) {
         if (key == "bias_tee_en") {
             lrfnm->set_rx_channel_bias_tee(channel,
@@ -129,7 +119,14 @@ void SoapyRFNM::writeSetting(const int direction, const size_t channel, const st
                 RFNM_FM_NOTCH_AUTO,
                 false);
         }
-        setRFNM(rfnm::rx_channel_apply_flags[channel]);
+
+        // If stream is active, apply immediately. Otherwise, defer.
+        if (rx_stream) {
+            setRFNM(rfnm::rx_channel_apply_flags[channel]);
+        }
+        else {
+            pending_config[channel] = true;
+        }
     }
 }
 
@@ -148,12 +145,11 @@ size_t SoapyRFNM::getNumChannels(const int direction) const {
     }
 }
 
-std::vector<double> SoapyRFNM::listSampleRates(const int direction, const size_t channel) const {
-    std::vector<double> rates;
+SoapySDR::RangeList SoapyRFNM::getSampleRateRange(const int direction, const size_t channel) const {
+    SoapySDR::RangeList rates;
 
     if (direction == SOAPY_SDR_RX) {
-        rates.push_back(lrfnm->get_hwinfo()->clock.dcs_clk);
-        rates.push_back(lrfnm->get_hwinfo()->clock.dcs_clk / 2);
+        rates.push_back(SoapySDR::Range(lrfnm->get_hwinfo()->clock.samp_rate_min, lrfnm->get_hwinfo()->clock.samp_rate_max));
     }
 
     return rates;
@@ -164,9 +160,9 @@ double SoapyRFNM::getSampleRate(const int direction, const size_t channel) const
         if (channel >= rx_chan_count) {
             throw std::runtime_error("nonexistent channel");
         }
-
-        return lrfnm->get_hwinfo()->clock.dcs_clk / lrfnm->get_rx_channel(channel)->samp_freq_div_n;
-    } else {
+        return lrfnm->get_hwinfo()->clock.samp_rate;
+    }
+    else {
         return 0;
     }
 }
@@ -177,14 +173,8 @@ void SoapyRFNM::setSampleRate(const int direction, const size_t channel, const d
             throw std::runtime_error("nonexistent channel");
         }
 
-        if (rate == lrfnm->get_hwinfo()->clock.dcs_clk) {
-            lrfnm->set_rx_channel_samp_freq_div(channel, 1, 1, false);
-        } else if (rate == lrfnm->get_hwinfo()->clock.dcs_clk / 2) {
-            lrfnm->set_rx_channel_samp_freq_div(channel, 1, 2, false);
-        } else {
-            throw std::runtime_error("unsupported sample rate");
-        }
-        setRFNM(rfnm::rx_channel_apply_flags[channel]);
+        lrfnm->set_samp_rate(rate);
+        // Don't apply - wait for stream setup
     }
 }
 
@@ -201,9 +191,8 @@ std::vector<std::string> SoapyRFNM::getStreamFormats(const int direction, const 
     return formats;
 }
 
-// hack: I'm only supporting one stream for now, so I use a member variable to store it and ignore the stream argument
 int SoapyRFNM::activateStream(SoapySDR::Stream* stream, const int flags, const long long timeNs,
-        const size_t numElems) {
+    const size_t numElems) {
     spdlog::info("RFNMDevice::activateStream()");
 
     if (rx_stream->start()) {
@@ -227,7 +216,7 @@ std::vector<std::string> SoapyRFNM::listFrequencies(const int direction, const s
     return names;
 }
 
-SoapySDR::RangeList SoapyRFNM::getFrequencyRange(const int direction, const size_t channel, const std::string &name) const {
+SoapySDR::RangeList SoapyRFNM::getFrequencyRange(const int direction, const size_t channel, const std::string& name) const {
     SoapySDR::RangeList results;
 
     if (direction == SOAPY_SDR_RX) {
@@ -242,27 +231,35 @@ SoapySDR::RangeList SoapyRFNM::getFrequencyRange(const int direction, const size
     return results;
 }
 
-double SoapyRFNM::getFrequency(const int direction, const size_t channel, const std::string &name) const {
+double SoapyRFNM::getFrequency(const int direction, const size_t channel, const std::string& name) const {
     if (direction == SOAPY_SDR_RX) {
         if (channel >= rx_chan_count) {
             throw std::runtime_error("nonexistent channel");
         }
 
         return lrfnm->get_rx_channel(channel)->freq;
-    } else {
+    }
+    else {
         return 0;
     }
 }
 
-void SoapyRFNM::setFrequency(const int direction, const size_t channel, const std::string &name,
-        const double frequency, const SoapySDR::Kwargs& args) {
+void SoapyRFNM::setFrequency(const int direction, const size_t channel, const std::string& name,
+    const double frequency, const SoapySDR::Kwargs& args) {
     if (direction == SOAPY_SDR_RX) {
         if (channel >= rx_chan_count) {
             throw std::runtime_error("nonexistent channel");
         }
 
         lrfnm->set_rx_channel_freq(channel, frequency, false);
-        setRFNM(rfnm::rx_channel_apply_flags[channel]);
+
+        // If stream is active, apply immediately. Otherwise, defer.
+        if (rx_stream) {
+            setRFNM(rfnm::rx_channel_apply_flags[channel]);
+        }
+        else {
+            pending_config[channel] = true;
+        }
     }
 }
 
@@ -272,39 +269,48 @@ std::vector<std::string> SoapyRFNM::listGains(const int direction, const size_t 
     return names;
 }
 
-double SoapyRFNM::getGain(const int direction, const size_t channel, const std::string &name) const {
+double SoapyRFNM::getGain(const int direction, const size_t channel, const std::string& name) const {
     if (direction == SOAPY_SDR_RX) {
         if (channel >= rx_chan_count) {
             throw std::runtime_error("nonexistent channel");
         }
 
         return lrfnm->get_rx_channel(channel)->gain;
-    } else {
+    }
+    else {
         return 0;
     }
 }
 
-void SoapyRFNM::setGain(const int direction, const size_t channel, const std::string &name, const double value) {
+void SoapyRFNM::setGain(const int direction, const size_t channel, const std::string& name, const double value) {
     if (direction == SOAPY_SDR_RX) {
         if (channel >= rx_chan_count) {
             throw std::runtime_error("nonexistent channel");
         }
 
         lrfnm->set_rx_channel_gain(channel, value, false);
-        setRFNM(rfnm::rx_channel_apply_flags[channel]);
+
+        // If stream is active, apply immediately. Otherwise, defer.
+        if (rx_stream) {
+            setRFNM(rfnm::rx_channel_apply_flags[channel]);
+        }
+        else {
+            pending_config[channel] = true;
+        }
     }
 }
 
-SoapySDR::Range SoapyRFNM::getGainRange(const int direction, const size_t channel, const std::string &name) const {
+SoapySDR::Range SoapyRFNM::getGainRange(const int direction, const size_t channel, const std::string& name) const {
     if (direction == SOAPY_SDR_RX) {
         if (channel >= rx_chan_count) {
             throw std::runtime_error("nonexistent channel");
         }
 
         return SoapySDR::Range(
-                lrfnm->get_rx_channel(channel)->gain_range.min,
-                lrfnm->get_rx_channel(channel)->gain_range.max);
-    } else {
+            lrfnm->get_rx_channel(channel)->gain_range.min,
+            lrfnm->get_rx_channel(channel)->gain_range.max);
+    }
+    else {
         return SoapySDR::Range(0, 0);
     }
 }
@@ -316,7 +322,8 @@ double SoapyRFNM::getBandwidth(const int direction, const size_t channel) const 
         }
 
         return lrfnm->get_rx_channel(channel)->rfic_lpf_bw * 1e6;
-    } else {
+    }
+    else {
         return 0;
     }
 }
@@ -330,7 +337,14 @@ void SoapyRFNM::setBandwidth(const int direction, const size_t channel, const do
         if (bw == 0.0) return; // special ignore value
 
         lrfnm->set_rx_channel_rfic_lpf_bw(channel, bw / 1e6, false);
-        setRFNM(rfnm::rx_channel_apply_flags[channel]);
+
+        // If stream is active, apply immediately. Otherwise, defer.
+        if (rx_stream) {
+            setRFNM(rfnm::rx_channel_apply_flags[channel]);
+        }
+        else {
+            pending_config[channel] = true;
+        }
     }
 }
 
@@ -368,7 +382,8 @@ std::string SoapyRFNM::getAntenna(const int direction, const size_t channel) con
         }
 
         return rfnm::device::rf_path_to_string(lrfnm->get_rx_channel(channel)->path);
-    } else {
+    }
+    else {
         return "";
     }
 }
@@ -381,12 +396,19 @@ void SoapyRFNM::setAntenna(const int direction, const size_t channel, const std:
 
         auto path = rfnm::device::string_to_rf_path(name);
         lrfnm->set_rx_channel_path(channel, path, false);
-        setRFNM(rfnm::rx_channel_apply_flags[channel]);
+
+        // If stream is active, apply immediately. Otherwise, defer.
+        if (rx_stream) {
+            setRFNM(rfnm::rx_channel_apply_flags[channel]);
+        }
+        else {
+            pending_config[channel] = true;
+        }
     }
 }
 
 SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string& format,
-        const std::vector<size_t>& channels, const SoapySDR::Kwargs& args) {
+    const std::vector<size_t>& channels, const SoapySDR::Kwargs& args) {
     if (direction != SOAPY_SDR_RX) {
         return nullptr;
     }
@@ -395,25 +417,55 @@ SoapySDR::Stream* SoapyRFNM::setupStream(const int direction, const std::string&
         throw std::runtime_error("multiple streams unsupported");
     }
 
-    // bounds check channels before we start the stream
+    // Configure and apply settings for all channels that will be used
+    uint16_t apply_mask = 0;
     uint8_t chan_mask = 0;
+
     for (size_t channel : channels) {
         if (channel >= rx_chan_count) {
             throw std::runtime_error("nonexistent channel");
         }
 
+        auto ch = lrfnm->get_rx_channel(channel);
+
+        // Set reasonable defaults if path not configured
+        if (ch->path == RFNM_PATH_NULL && ch->path_preferred != RFNM_PATH_NULL) {
+            lrfnm->set_rx_channel_path(channel, ch->path_preferred, false);
+            pending_config[channel] = true;
+        }
+
+        // Mark channel for configuration if it has pending changes
+        if (pending_config[channel]) {
+            apply_mask |= rfnm::rx_channel_apply_flags[channel];
+        }
+
         chan_mask |= rfnm::channel_flags[channel];
     }
 
+    // Apply all pending configurations at once
+    if (apply_mask) {
+        spdlog::info("Applying configuration for channels with mask: 0x{:04x}", apply_mask);
+        setRFNM(apply_mask);
+
+        // Clear pending flags for configured channels
+        for (size_t channel : channels) {
+            pending_config[channel] = false;
+        }
+    }
+
+    // Now set up the stream format
     enum rfnm::stream_format stream_format;
 
     if (!format.compare(SOAPY_SDR_CF32)) {
         stream_format = rfnm::STREAM_FORMAT_CF32;
-    } else if (!format.compare(SOAPY_SDR_CS16)) {
+    }
+    else if (!format.compare(SOAPY_SDR_CS16)) {
         stream_format = rfnm::STREAM_FORMAT_CS16;
-    } else if (!format.compare(SOAPY_SDR_CS8)) {
+    }
+    else if (!format.compare(SOAPY_SDR_CS8)) {
         stream_format = rfnm::STREAM_FORMAT_CS8;
-    } else {
+    }
+    else {
         throw std::runtime_error("setupStream invalid format " + format);
     }
 
@@ -441,7 +493,7 @@ void SoapyRFNM::closeStream(SoapySDR::Stream* stream) {
 }
 
 int SoapyRFNM::readStream(SoapySDR::Stream* stream, void* const* buffs, const size_t numElems, int& flags,
-        long long int& timeNs, const long timeoutUs) {
+    long long int& timeNs, const long timeoutUs) {
     size_t elems_read;
     uint64_t timestamp_ns;
     rfnm_api_failcode ret = rx_stream->read(buffs, numElems, elems_read, timestamp_ns, timeoutUs);
@@ -480,13 +532,14 @@ bool SoapyRFNM::getDCOffsetMode(const int direction, const size_t channel) const
         }
 
         return dc_correction[channel];
-    } else {
+    }
+    else {
         return false;
     }
 }
 
 void SoapyRFNM::setRFNM(uint16_t applies) {
-    rfnm_api_failcode ret = lrfnm->set(applies);
+    rfnm_api_failcode ret = lrfnm->apply(applies);
 
     size_t chan_idx;
     switch (applies) {
