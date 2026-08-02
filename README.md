@@ -1,8 +1,8 @@
 # soapy-rfnm
 
 SoapySDR driver module for [RFNM](https://rfnm.com) software-defined radios, built on
-**librfnm v2**. This v2 rewrite lives on the `dev-v2` branch and pairs with librfnm's
-`dev-v2` branch — build the two together.
+**librfnm v2**. This v2 rewrite is `main`; it pairs with librfnm's `main` (the v2 line) —
+build the two together. The pre-v2 driver is preserved on the `legacy` branch.
 
 The module registers the `rfnm` driver with SoapySDR, so anything that speaks SoapySDR
 (SoapySDRUtil, CubicSDR, SDR++ via the Soapy source, GQRX, python bindings, ...) can use
@@ -22,8 +22,8 @@ an RFNM device.
 ## Requirements
 
 - SoapySDR development files (found via CMake; fetched and built automatically if absent)
-- librfnm >= 0.2.0 installed with its pkg-config file (`librfnm.pc`) — use the `dev-v2`
-  branch to match this driver
+- librfnm >= 0.2.0 installed with its pkg-config file (`librfnm.pc`) — use `main`
+  to match this driver
 - spdlog (fetched automatically via CPM if not installed)
 
 ## Build
